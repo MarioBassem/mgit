@@ -1,3 +1,4 @@
+mod blob;
 mod init;
 
 use std::process::exit;
