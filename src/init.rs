@@ -1,6 +1,7 @@
+use anyhow::Result;
 use std::fs;
 
-pub fn init() -> Result<(), std::io::Error> {
+pub fn init() -> Result<()> {
     log::info!("initializing git repo...");
 
     fs::create_dir(".git")?;

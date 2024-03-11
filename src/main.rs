@@ -3,27 +3,20 @@ mod init;
 
 use std::process::exit;
 
+use blob::read_blob;
 use clap::{Parser, Subcommand, ValueEnum};
 use log::error;
 use simple_logger::{set_up_color_terminal, SimpleLogger};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, Clone)]
 #[command(name = "mgit", about = "A simple VSC")]
-struct CLI {
-    commands: Commands,
-}
-
-impl std::fmt::Display for CLI {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.commands)
-    }
-}
-
-#[derive(Debug, Subcommand, Clone, ValueEnum)]
-enum Commands {
+enum CLI {
     /// Initializes a new git repo
     #[command()]
     Init,
+
+    #[command()]
+    CatFile { object: String },
 }
 
 fn main() {
@@ -36,8 +29,9 @@ fn main() {
 
     let args = CLI::parse();
 
-    let res = match args.commands {
-        Commands::Init => init::init(),
+    let res = match args {
+        CLI::Init => init::init(),
+        CLI::CatFile { object: hash } => read_blob(hash),
     };
 
     if let Err(err) = res {
