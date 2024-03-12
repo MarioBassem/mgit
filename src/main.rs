@@ -1,10 +1,12 @@
 mod blob;
+mod hash_object;
 mod init;
 
-use std::process::exit;
+use std::{path::PathBuf, process::exit};
 
 use blob::read_blob;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::Parser;
+use hash_object::hash_object;
 use log::error;
 use simple_logger::{set_up_color_terminal, SimpleLogger};
 
@@ -17,6 +19,13 @@ enum CLI {
 
     #[command()]
     CatFile { object: String },
+
+    #[command()]
+    HashObject {
+        #[clap(short = 'w')]
+        write: bool,
+        file_path: String,
+    },
 }
 
 fn main() {
@@ -32,6 +41,7 @@ fn main() {
     let res = match args {
         CLI::Init => init::init(),
         CLI::CatFile { object: hash } => read_blob(hash),
+        CLI::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
     };
 
     if let Err(err) = res {

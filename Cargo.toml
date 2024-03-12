@@ -10,4 +10,5 @@ anyhow = "1.0.80"
 clap = { version = "4.5.2", features = ["derive"] }
 flate2 = { version = "1.0.28", features = ["zlib-ng"], default-features = false }
 log = "0.4.21"
+sha256 = "1.5.0"
 simple_logger = "4.3.3"

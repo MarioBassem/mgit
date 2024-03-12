@@ -2,8 +2,8 @@ use anyhow::{bail, Context, Result};
 use core::fmt;
 use flate2;
 use std::{
-    fs::{self, File},
-    io::{BufRead, BufReader, Read, Write},
+    fs::{self},
+    io::{BufRead, BufReader, Read},
     ops::Deref,
 };
 
@@ -66,7 +66,7 @@ fn extract_blob_content<R: Read>(r: R) -> Result<String> {
 /// read_blob reads object content from file, decompresses it, then prints it to standard output
 pub fn read_blob(hash: String) -> Result<()> {
     let (dir, filename) = hash.split_at(2);
-    let file = fs::File::open(format!(".git/{}/{}", dir, filename))?;
+    let file = fs::File::open(format!(".git/objects/{}/{}", dir, filename))?;
     let content = extract_blob_content(file)?;
     print!("{}", content);
 
