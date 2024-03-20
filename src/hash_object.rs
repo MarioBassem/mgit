@@ -3,6 +3,7 @@ use std::{io::Write, path::PathBuf};
 use anyhow::{Ok, Result};
 use flate2::Compression;
 
+/// reads a file and generates its hash
 pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
     let original_file_content = std::fs::read_to_string(path)?;
     let blob_content = format!(
@@ -21,6 +22,7 @@ pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
     Ok(())
 }
 
+/// writes compressed data to object file
 fn write_object_file(hash: &str, compressed_data: Vec<u8>) -> Result<()> {
     let (dir_name, file_name) = hash.split_at(2);
     std::fs::create_dir_all(format!(".git/objects/{}", dir_name))?;
