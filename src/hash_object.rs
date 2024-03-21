@@ -2,6 +2,7 @@ use std::{io::Write, path::PathBuf};
 
 use anyhow::{Ok, Result};
 use flate2::Compression;
+use sha1::{Digest, Sha1};
 
 /// reads a file and generates its hash
 pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
@@ -11,7 +12,7 @@ pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
         original_file_content.len(),
         original_file_content
     );
-    let hash = hash256(&blob_content)?;
+    let hash = hash(&blob_content)?;
     if write {
         let compressed_data = compress(&blob_content)?;
         write_object_file(&hash, compressed_data)?;
@@ -39,22 +40,25 @@ fn compress(data: &str) -> Result<Vec<u8>> {
     let mut writer = flate2::write::ZlibEncoder::new(Vec::new(), Compression::default());
     writer.write_all(data.as_bytes())?;
     let compressed_data = writer.finish()?;
-    return Ok(compressed_data);
+    Ok(compressed_data)
 }
 
-fn hash256(data: &str) -> Result<String> {
-    let digest = sha256::digest(data);
-    return Ok(digest);
+fn hash(data: &str) -> Result<String> {
+    let mut hash = Sha1::new();
+    hash.update(data);
+    let digest = hash.finalize();
+
+    Ok(format!("{:x}", digest))
 }
 
 #[cfg(test)]
 mod test {
-    use crate::hash_object::hash256;
+    use crate::hash_object::hash;
 
     #[test]
-    fn hash256_test() {
+    fn hash_test() {
         let data = "hello world";
-        let hashed = hash256(data).unwrap();
+        let hashed = hash(data).unwrap();
         assert_eq!(
             hashed,
             String::from("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
