@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use core::fmt;
-use flate2;
 use std::{
     fs::{self},
     io::{BufRead, BufReader, Read},
@@ -9,8 +8,8 @@ use std::{
 
 #[derive(Debug)]
 enum ReadError {
-    ErrNullByteNotFound,
-    ErrInvalidBlobFormat(String),
+    // ErrNullByteNotFound,
+    ErrInvalidBlobFormat,
 }
 
 impl fmt::Display for ReadError {
@@ -18,7 +17,9 @@ impl fmt::Display for ReadError {
         // return match self {
         //     ReadError::ErrNullByteNotFound => write!(f, "Null byte not found in blob"),
         // };
-        write!(f, "{}", self)
+        match self {
+            ReadError::ErrInvalidBlobFormat => write!(f, "failed to read blob type"),
+        }
     }
 }
 
@@ -33,9 +34,7 @@ fn extract_blob_content<R: Read>(r: R) -> Result<String> {
     buffer.read_until(b' ', &mut blob_buff)?;
 
     if blob_buff.deref() != "blob ".as_bytes() {
-        bail!(ReadError::ErrInvalidBlobFormat(
-            "failed to read blob".to_string()
-        ));
+        bail!(ReadError::ErrInvalidBlobFormat);
     }
 
     // read content length (until null byte is reached) from decompressed data
@@ -44,10 +43,7 @@ fn extract_blob_content<R: Read>(r: R) -> Result<String> {
         .read_until(b'\0', &mut length_buff)
         .context("failed to read blob length")?;
 
-    let length = usize::from_str_radix(
-        std::str::from_utf8(&length_buff[..length_buff.len() - 1])?,
-        10,
-    )?;
+    let length = (std::str::from_utf8(&length_buff[..length_buff.len() - 1])?).parse::<usize>()?;
 
     let mut content_buff = Vec::new();
     buffer.read_to_end(&mut content_buff)?;
@@ -60,7 +56,7 @@ fn extract_blob_content<R: Read>(r: R) -> Result<String> {
         )
     }
 
-    return Ok(String::from_utf8(content_buff)?);
+    Ok(String::from_utf8(content_buff)?)
 }
 
 /// read_blob reads object content from file, decompresses it, then prints it to standard output
