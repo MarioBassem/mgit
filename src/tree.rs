@@ -1,11 +1,16 @@
+use crate::hash_object::{self, write_object_file};
+use anyhow::{bail, Context, Ok, Result};
+use flate2::Compression;
+use sha1::{Digest, Sha1};
+use std::io::{Bytes, Write};
 use std::ops::Deref;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use std::{
     fmt::Display,
     fs,
     io::{BufRead, BufReader, Read},
 };
-
-use anyhow::{bail, Context, Ok, Result};
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum EntryMode {
@@ -118,6 +123,55 @@ fn get_mode_from_bytes(mode_buff: &[u8]) -> Result<EntryMode> {
     };
 
     Ok(entry_mode)
+}
+
+/// writes a tree and returns its hash(in hexadecimal form)
+pub fn write_tree() -> Result<()> {
+    let entries = fs::read_dir("./")?;
+
+    todo!()
+}
+
+fn write_tree_rec(path: PathBuf) -> Result<Vec<u8>> {
+    let paths = fs::read_dir(path)?;
+    let mut content = String::new();
+    for path in paths {
+        let entry = path?;
+        if entry.file_type()?.is_dir() {
+            let hash = write_tree_rec(entry.path())?;
+            content = format!("{}{} {:?}\0{}", content, 40000, entry.file_name(), hash)
+        } else if entry.file_type()?.is_symlink() {
+            let hash = hash_object::hash_object(entry.path(), true)?;
+            content = format!("{}{} {:?}\0{}", content, 120000, entry.file_name(), hash)
+        } else if entry.file_type()?.is_file() {
+            if entry.metadata()?.permissions().mode() & 0111 != 0 {
+                // executable
+                let hash = hash_object::hash_object(entry.path(), true)?;
+                content = format!("{}{} {:?}\0{}", content, 100755, entry.file_name(), hash)
+            } else {
+                let hash = hash_object::hash_object(entry.path(), true)?;
+                content = format!("{}{} {:?}\0{}", content, 100644, entry.file_name(), hash)
+            }
+        }
+    }
+    let size = content.len();
+    let content = format!("tree {}\0{}", size, content);
+
+    // compress
+    let mut writer = flate2::write::ZlibEncoder::new(Vec::new(), Compression::default());
+    writer.write_all(content.as_bytes())?;
+    let compressed = writer.finish()?;
+
+    // write to file
+    // hash
+    let mut hasher = Sha1::new();
+    hasher.update(compressed);
+    let result = hasher.finalize();
+
+    let hash_hex = format!("{:x}", result);
+    write_object_file(&hash_hex, compressed)?;
+
+    Ok(result[..].to_vec())
 }
 
 #[cfg(test)]

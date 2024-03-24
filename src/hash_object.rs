@@ -12,13 +12,18 @@ pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
         original_file_content.len(),
         original_file_content
     );
-    let hash = hash(&blob_content)?;
+
+    let mut hasher = Sha1::new();
+    hasher.update(blob_content);
+    let hash = hasher.finalize();
+    let hash_hex = format!("{:x}", hash);
+
     if write {
         let compressed_data = compress(&blob_content)?;
-        write_object_file(&hash, compressed_data)?;
+        write_object_file(&hash_hex, compressed_data)?;
     }
 
-    print!("{}", hash);
+    print!("{}", hash_hex);
 
     Ok(())
 }
@@ -43,24 +48,28 @@ fn compress(data: &str) -> Result<Vec<u8>> {
     Ok(compressed_data)
 }
 
-fn hash(data: &str) -> Result<String> {
+fn hash(data: &str) -> Result<Vec<u8>> {
     let mut hash = Sha1::new();
     hash.update(data);
     let digest = hash.finalize();
 
-    Ok(format!("{:x}", digest))
+    Ok(digest[..].to_vec())
 }
 
 #[cfg(test)]
 mod test {
     use crate::hash_object::hash;
-
+    use sha1::{Digest, Sha1};
     #[test]
     fn hash_test() {
         let data = "hello world";
-        let hashed = hash(data).unwrap();
+        let mut hasher = Sha1::new();
+        hasher.update(data);
+        let hash = hasher.finalize();
+        let hash_hex = format!("{:x}", hash);
+        // let hashed = hash(data).unwrap();
         assert_eq!(
-            hashed,
+            hash_hex,
             String::from("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
         );
     }

@@ -1,6 +1,7 @@
 mod blob;
 mod hash_object;
 mod init;
+mod objects;
 mod tree;
 
 use std::{path::PathBuf, process::exit};
