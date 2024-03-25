@@ -45,4 +45,13 @@ impl HashHex {
     pub fn get_object_path(&self) -> (&str, &str) {
         self.0.split_at(2)
     }
+
+    pub fn get_hash(&self) -> Result<Hash> {
+        let x: Result<Vec<u8>> = (0..self.0.len())
+            .step_by(2)
+            .map(|i| -> Result<u8> { Ok(u8::from_str_radix(&self.0[i..i + 2], 16)?) })
+            .collect();
+
+        Ok(Hash(x?))
+    }
 }
