@@ -4,18 +4,36 @@ use anyhow::{anyhow, bail, Result};
 
 pub struct PktLine(String);
 
-pub struct Ref(String);
+pub enum Ref {
+    Tip { name: String, object_id: String },
+    Peeled { name: String, object_id: String },
+    Shallow { object_id: String },
+}
 
-pub struct Shallow(String);
+type Shallow = String;
 
 type Capability = String;
 
 #[derive(Debug)]
 pub enum PktLineError {
+    /// indicates an error with pkt line length bytes
+    ErrLineLengthBytes(String),
     /// version error
     ErrVersion(String),
 
+    /// indicates an error with no-refs line
     ErrInvalidNoRefs(String),
+
+    /// indicates an invalid capability
+    ErrInvalidCapability(String),
+
+    /// indicates an invalid ref
+    ErrInvalidRef(String),
+
+    /// indicates an invalid shallow
+    ErrInvalidShallow(String),
+
+    ErrInvalidFlushPkt,
 }
 
 impl Error for PktLineError {}
@@ -23,133 +41,311 @@ impl Error for PktLineError {}
 impl Display for PktLineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PktLineError::ErrVersion(err) => write!(f, "pkt-line error: {}", err),
+            Self::ErrLineLengthBytes(err) => write!(f, "invalid pkt-line length: {}", err),
+            Self::ErrVersion(err) => write!(f, "invalid version: {}", err),
+            Self::ErrInvalidNoRefs(err) => write!(f, "invalid no-refs: {}", err),
+            Self::ErrInvalidCapability(err) => write!(f, "invalid capability: {}", err),
+            Self::ErrInvalidRef(err) => write!(f, "invalid ref: {}", err),
+            Self::ErrInvalidShallow(err) => write!(f, "invalid shallow ref: {}", err),
+            Self::ErrInvalidFlushPkt => write!(f, "invalid or missing flush-pkt"),
         }
     }
 }
 
-pub fn read_pkt_line() -> Result<Vec<PktLine>> {
-    // read length in first 4 bytes
-    // read next (length) bytes
-    //
-    todo!()
+pub struct AdvertisedRefsParser {
+    data: String,
+    version: u8,
 }
 
-fn parse_advertised_refs(data: &mut str) -> Result<(Vec<Ref>, Vec<Capability>)> {
-    /*
-        *1("version 1")
-        (no-refs / list-of-refs)
-        *shallow
-        flush-pkt
-    */
-    // parse version
-    let version = parse_version(data)?;
-    // try parse no refs. if failed, try parse refs
-    // try parse shallow
-    // parse shallow pkt
-    todo!()
-}
+impl AdvertisedRefsParser {
+    fn peeker<T>(&mut self, f: impl Fn(&str) -> Result<T>) -> Result<T> {
+        let line = self.peek_pkt_line()?;
+        let line_length = line.len() + 4; // including 4 length bytes
 
-pub enum Version {
-    One,
-    Two,
-    Three,
-}
+        let res = f(line.trim())?;
+        self.data = self.data.split_off(line_length);
 
-fn parse_version(data: &mut str) -> Result<u8> {
-    let (version_str, data) = data.split_once(' ').ok_or(PktLineError::ErrVersion(
-        "failed to read version".to_string(),
-    ))?;
-
-    let (version_number, data) = data.split_at(1);
-    let version = u8::from_str_radix(version_number, 10)
-        .map_err(|err| PktLineError::ErrVersion(format!("invalid version: {}", err)))?;
-
-    if data.starts_with('\n') {
-        let (_, data) = data.split_at(1);
+        Ok(res)
     }
 
-    Ok(version)
-}
+    /// returns next line without modifying the actual buffer
+    fn peek_pkt_line(&mut self) -> Result<&str> {
+        let (length_str, rest) = self.data.split_at(4);
+        if length_str.len() != 4 {
+            bail!(anyhow!(PktLineError::ErrLineLengthBytes(format!(
+                "length bytes should be 4 but {} were found",
+                length_str.len()
+            ))))
+        }
 
-fn try_parse_no_refs(data: &mut str) -> Result<Vec<Capability>> {
-    /*
-        no-refs          =  PKT-LINE(zero-id SP "capabilities^{}"
-                            NUL capability-list)
-    */
+        let length = usize::from_str_radix(length_str, 16)?;
+        if length > 65520 {
+            bail!(anyhow!(PktLineError::ErrLineLengthBytes(format!(
+                "line length must not exceed 65520, {} was found",
+                length
+            ))))
+        }
 
-    let _ = get_zero_id(data)?;
-    let (sp, mut data) = data.split_at(1);
-    if sp != "" {
-        bail!(anyhow!(PktLineError::ErrInvalidNoRefs(
-            "expected SP".to_string()
-        )))
+        let (line, _) = rest.split_at(length - 4);
+        if line.len() != length - 4 {
+            bail!(anyhow!(PktLineError::ErrLineLengthBytes(format!(
+                "line length {} was expected, but {} was found",
+                length,
+                line.len() + 4
+            ))))
+        }
+
+        Ok(line)
     }
 
-    let cap_want = "capabilities^{}";
-    let (capabilities_str, mut data) = data.split_at(cap_want.len());
-    if capabilities_str != cap_want {
-        bail!(anyhow!(PktLineError::ErrInvalidNoRefs(
-            "invalid capabilities string".to_string()
-        )))
+    pub fn parse_advertised_refs(&mut self) -> Result<(Vec<Ref>, Vec<Capability>, Option<Ref>)> {
+        /*
+            *1("version 1")
+            (no-refs / list-of-refs)
+            *shallow
+            flush-pkt
+        */
+        let mut refs = Vec::new();
+        let capabilities: Vec<Capability>;
+        let mut shallow: Option<Ref> = None;
+        // let (mut refs, mut capabilities, mut shallow) = (Vec::new(), Vec::new(), None);
+        // parse version
+        let version = self.peeker(Self::parse_version_line)?;
+        if version != self.version {
+            return Err(PktLineError::ErrVersion(format!(
+                "only supported version is {}",
+                self.version
+            ))
+            .into());
+        }
+        // try parse no refs. if failed, try parse refs
+        if let Ok(caps) = self.peeker(Self::parse_no_refs_line) {
+            capabilities = caps
+        } else {
+            (refs, capabilities) = self.parse_list_of_refs()?;
+        }
+
+        // try parse shallow
+        if let Ok(shall) = self.peeker(Self::parse_shallow_line) {
+            shallow = Some(shall)
+        }
+
+        self.peeker(Self::validate_flush_pkt)?;
+
+        Ok((refs, capabilities, shallow))
     }
 
-    let capabilities = parse_capability_list(&mut data)?;
-    Ok(capabilities)
-}
+    fn parse_version_line(line: &str) -> Result<u8> {
+        let (version_str, version_number) = line
+            .split_once(' ')
+            .ok_or(PktLineError::ErrVersion("missing SP".to_string()))?;
 
-/// ensures the next 40 bytes from zero-id
-fn get_zero_id(data: &mut str) -> Result<()> {
-    let (zero_id, data) = data.split_at(40);
+        if version_str != "version" {
+            return Err(PktLineError::ErrVersion("missing version string".to_string()).into());
+        }
 
-    if zero_id != (0..40).map(|_| "0").collect::<String>().as_str() {
-        bail!(anyhow!(PktLineError::ErrInvalidNoRefs(
-            "invalid zero id".to_string()
-        )))
+        let version = u8::from_str_radix(version_number, 10)
+            .map_err(|err| PktLineError::ErrVersion(format!("invalid number: {}", err)))?;
+
+        Ok(version)
     }
 
-    Ok(())
-}
+    fn parse_no_refs_line(line: &str) -> Result<Vec<Capability>> {
+        /*
+            no-refs          =  PKT-LINE(zero-id SP "capabilities^{}"
+                                NUL capability-list)
+        */
+        let (zero_id, line) = line
+            .split_once(' ')
+            .ok_or(PktLineError::ErrInvalidNoRefs("expected SP".to_string()))?;
 
-/// tries to parse list of refs
-fn try_parse_list_of_refs(data: &mut str) -> Result<(Vec<Ref>, Vec<Capability>)> {
-    /*
-        first-ref *other-ref
-    */
-    // TODO: check if ref is no-ref first
-    let (first_ref, capabilities) = parse_first_ref(data)?;
-    let mut other_refs = try_parse_other_ref(data)?;
-    let mut refs = Vec::new();
-    refs.push(first_ref);
-    refs.append(&mut other_refs);
+        Self::validate_zero_id(zero_id)?;
 
-    Ok((refs, capabilities))
-}
+        let cap_want = "capabilities^{}";
+        let (capabilities_str, capabilities_list_str) = line
+            .split_once('\0')
+            .ok_or(PktLineError::ErrInvalidNoRefs("expected NUL".to_string()))?;
 
-fn parse_first_ref(data: &mut str) -> Result<(Ref, Vec<Capability>)> {
-    todo!()
-}
+        if capabilities_str != cap_want {
+            return Err(PktLineError::ErrInvalidNoRefs(format!(
+                "invalid capabilities string: {}",
+                capabilities_str
+            ))
+            .into());
+        }
 
-fn try_parse_other_ref(data: &str) -> Result<Vec<Ref>> {
-    todo!()
-}
+        let capabilities = Self::parse_capability_list(capabilities_list_str)?;
+        Ok(capabilities)
+    }
 
-fn parse_other_tip(data: &str) -> Result<Ref> {
-    todo!()
-}
+    /// ensures the provided string forms a zero-id
+    fn validate_zero_id(zero_id_str: &str) -> Result<()> {
+        if zero_id_str != (0..40).map(|_| "0").collect::<String>().as_str() {
+            return Err(PktLineError::ErrInvalidNoRefs("invalid zero id".to_string()).into());
+        }
 
-fn parse_other_peeled(data: &str) -> Result<Ref> {
-    todo!()
-}
+        Ok(())
+    }
 
-fn try_parse_shallow(data: &str) -> Result<Shallow> {
-    todo!()
-}
+    /// tries to parse list of refs
+    fn parse_list_of_refs(&mut self) -> Result<(Vec<Ref>, Vec<Capability>)> {
+        /*
+            list-of-refs     =  first-ref *other-ref
 
-fn parse_capability_list(data: &mut str) -> Result<Vec<Capability>> {
-    todo!()
-}
+            next is shallow or flush-pkt
+                shallow          =  PKT-LINE("shallow" SP obj-id)
+                flush-pkt    = "0000"
 
-fn parse_capability(data: &str) -> Result<Capability> {
-    todo!()
+        */
+
+        let (first_ref, capabilities) = self.peeker(Self::parse_first_ref)?;
+        let mut other_refs = Vec::new();
+        loop {
+            let line = self.peek_pkt_line()?;
+            if line.starts_with("0000") || line.starts_with("shallow") {
+                break;
+            }
+
+            let other_ref = self.peeker(Self::parse_other_ref)?;
+            other_refs.push(other_ref);
+        }
+
+        let mut refs = Vec::new();
+        refs.push(first_ref);
+        refs.append(&mut other_refs);
+
+        Ok((refs, capabilities))
+    }
+
+    fn parse_first_ref(line: &str) -> Result<(Ref, Vec<Capability>)> {
+        /*
+            first-ref        =  PKT-LINE(obj-id SP refname
+                                NUL capability-list)
+        */
+
+        let (object_id, line) = line
+            .split_once(' ')
+            .ok_or(PktLineError::ErrInvalidRef("expected SP".to_string()))?;
+
+        if object_id.len() != 40 {
+            return Err(PktLineError::ErrInvalidRef(format!(
+                "invalid object id length '{}'",
+                object_id.len()
+            ))
+            .into());
+        }
+
+        let (refname, cap_list_str) = line
+            .split_once('\0')
+            .ok_or(PktLineError::ErrInvalidRef("expected NUL".to_string()))?;
+
+        let capabilities = Self::parse_capability_list(cap_list_str)?;
+
+        Ok((
+            Ref::Tip {
+                name: refname.to_string(),
+                object_id: object_id.to_string(),
+            },
+            capabilities,
+        ))
+    }
+
+    fn parse_other_ref(line: &str) -> Result<Ref> {
+        /*
+            other-ref        =  PKT-LINE(other-tip / other-peeled)
+            other-tip        =  obj-id SP refname
+            other-peeled     =  obj-id SP refname "^{}"
+        */
+
+        let (object_id, refname) = line
+            .split_once(' ')
+            .ok_or(PktLineError::ErrInvalidRef("expected SP".to_string()))?;
+
+        if object_id.len() != 40 {
+            return Err(PktLineError::ErrInvalidRef(format!(
+                "invalid object id length '{}'",
+                object_id.len()
+            ))
+            .into());
+        }
+
+        let ret: Ref;
+        if refname.ends_with("^{}") {
+            ret = Ref::Peeled {
+                name: refname.trim_end_matches("^{}").to_string(),
+                object_id: object_id.to_string(),
+            }
+        } else {
+            ret = Ref::Tip {
+                name: refname.to_string(),
+                object_id: object_id.to_string(),
+            }
+        }
+
+        Ok(ret)
+    }
+
+    fn parse_shallow_line(line: &str) -> Result<Ref> {
+        /*
+            shallow          =  PKT-LINE("shallow" SP obj-id)
+        */
+
+        let (shallow_str, object_id) = line
+            .split_once(' ')
+            .ok_or(PktLineError::ErrInvalidShallow("expected SP".to_string()))?;
+
+        if shallow_str != "shallow" {
+            return Err(PktLineError::ErrInvalidShallow("expected 'shallow'".to_string()).into());
+        }
+
+        Ok(Ref::Shallow {
+            object_id: object_id.to_string(),
+        })
+    }
+
+    fn parse_capability_list(list: &str) -> Result<Vec<Capability>> {
+        let capabilities = list
+            .split_terminator(' ')
+            .map(|s| s.to_string())
+            .collect::<Vec<Capability>>();
+
+        Self::validate_capabilities(&capabilities);
+
+        Ok(capabilities)
+    }
+
+    fn validate_capabilities(caps: &Vec<Capability>) -> Result<()> {
+        caps.iter().map(|cap| -> Result<()> {
+            if cap.len() == 0 {
+                return Err(PktLineError::ErrInvalidCapability(
+                    "invalid empty capability".to_string(),
+                )
+                .into());
+            }
+
+            cap.as_bytes().iter().map(|c| -> Result<()> {
+                if c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-' || *c == b'_' {
+                    return Ok(());
+                }
+
+                return Err(PktLineError::ErrInvalidCapability(format!(
+                    "invalid capability character: {}",
+                    c
+                ))
+                .into());
+            });
+
+            Ok(())
+        });
+
+        Ok(())
+    }
+
+    fn validate_flush_pkt(line: &str) -> Result<()> {
+        if line != "0000" {
+            return Err(PktLineError::ErrInvalidFlushPkt.into());
+        }
+
+        Ok(())
+    }
 }
