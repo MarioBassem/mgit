@@ -4,15 +4,32 @@ use anyhow::{anyhow, bail, Result};
 
 pub struct PktLine(String);
 
+impl PktLine {
+    pub fn new(content: String) -> PktLine {
+        let length = content.len() + 5; // 4 length bytes + LF byte
+        let length_str = format!("{:04x}", length);
+
+        PktLine(format!("{}{}\n", length_str, content))
+    }
+
+    pub fn new_flush() -> PktLine {
+        PktLine("0000".to_string())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 pub enum Ref {
     Tip { name: String, object_id: String },
     Peeled { name: String, object_id: String },
     Shallow { object_id: String },
 }
 
-type Shallow = String;
+pub type Shallow = String;
 
-type Capability = String;
+pub type Capability = String;
 
 #[derive(Debug)]
 pub enum PktLineError {
@@ -20,19 +37,15 @@ pub enum PktLineError {
     ErrLineLengthBytes(String),
     /// version error
     ErrVersion(String),
-
     /// indicates an error with no-refs line
     ErrInvalidNoRefs(String),
-
     /// indicates an invalid capability
     ErrInvalidCapability(String),
-
     /// indicates an invalid ref
     ErrInvalidRef(String),
-
     /// indicates an invalid shallow
     ErrInvalidShallow(String),
-
+    /// indicates an invalid flush-pkt
     ErrInvalidFlushPkt,
 }
 
