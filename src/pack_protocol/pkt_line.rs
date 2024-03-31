@@ -16,6 +16,10 @@ impl PktLine {
         PktLine("0000".to_string())
     }
 
+    pub fn new_end() -> PktLine {
+        PktLine("0009done\n".to_string())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

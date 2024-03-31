@@ -18,6 +18,15 @@ pub struct PackHeader {
     entries: u32,
 }
 
+/*
+    header:
+        - 4 byte signature "PACK"
+        - 4 byte version number (Git currently accepts version number 2 or 3 but generates version 2 only.)
+        - 4-byte number of objects contained in the pack (network byte order)
+
+
+*/
+
 #[derive(Debug, Clone)]
 pub enum PackObject {
     Simple {
