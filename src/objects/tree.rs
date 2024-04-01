@@ -135,7 +135,7 @@ fn parse_tree(data: String) -> Result<Vec<Entry>> {
         )))
     }
 
-    let mut rest = rest.split_off("blob ".len());
+    let rest = rest.split_off("blob ".len());
     let (size_str, content) = rest
         .split_once('\0')
         .ok_or(ObjectError::ErrParse(String::from(

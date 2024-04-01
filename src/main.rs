@@ -1,14 +1,11 @@
-mod blob;
-mod hash_object;
+mod clone;
 mod init;
 mod objects;
-mod tree;
+mod pack_protocol;
 
 use std::{path::PathBuf, process::exit};
 
-use blob::read_blob;
 use clap::Parser;
-use hash_object::hash_object;
 use log::error;
 use simple_logger::{set_up_color_terminal, SimpleLogger};
 
@@ -40,14 +37,14 @@ fn main() {
 
     let args = Cli::parse();
 
-    let res = match args {
-        Cli::Init => init::init(),
-        Cli::CatFile { object: hash } => read_blob(hash),
-        Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
-    };
+    // let res = match args {
+    //     Cli::Init => init::init(),
+    //     Cli::CatFile { object: hash } => read_blob(hash),
+    //     Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
+    // };
 
-    if let Err(err) = res {
-        error!("{}", err);
-        exit(1)
-    }
+    // if let Err(err) = res {
+    //     error!("{}", err);
+    //     exit(1)
+    // }
 }

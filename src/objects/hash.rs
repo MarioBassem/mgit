@@ -4,7 +4,7 @@ use anyhow::{Ok, Result};
 use sha1::{Digest, Sha1};
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Hash(Vec<u8>);
+pub(crate) struct Hash(Vec<u8>);
 
 /// hash data using sha1
 pub fn hash(data: &[u8]) -> Result<Hash> {
@@ -35,8 +35,8 @@ impl From<&str> for Hash {
 
 pub struct HashHex(String);
 
-impl From<Hash> for HashHex {
-    fn from(value: Hash) -> Self {
+impl From<&Hash> for HashHex {
+    fn from(value: &Hash) -> Self {
         HashHex(format!("{:x}", value))
     }
 }

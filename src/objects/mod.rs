@@ -1,7 +1,7 @@
 mod blob;
 mod commit;
 mod compress;
-mod hash;
+pub mod hash;
 mod tree;
 
 use std::{
@@ -16,7 +16,7 @@ use self::hash::{hash, Hash, HashHex};
 
 use anyhow::Result;
 
-const OBJECTS_DIR: String = String::from(".git/objects");
+const OBJECTS_DIR: &str = ".git/objects";
 
 #[derive(Debug)]
 enum ObjectError {
@@ -42,12 +42,19 @@ impl Display for ObjectError {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub(crate) enum ObjectKind {
+    Blob,
+    Tree,
+    Commit,
+}
+
 fn write_object(compressed_content: Vec<u8>) -> Result<Hash> {
     // hash
     let hash = hash(&compressed_content)?;
 
     // write blob to path from hashhex
-    let hash_hex = HashHex::from(hash);
+    let hash_hex = HashHex::from(&hash);
 
     let (dir_name, file_name) = hash_hex.get_object_path();
 
