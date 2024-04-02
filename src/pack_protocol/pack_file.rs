@@ -1,8 +1,9 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, io::Read};
 
 use bytes::{Buf, Bytes};
 
 use anyhow::Result;
+use flate2::read::ZlibDecoder;
 use reqwest::header;
 
 use crate::objects::ObjectKind;
@@ -32,6 +33,8 @@ pub enum PackFileError {
     ErrInvalidPackObjectType,
     /// indicates an invalid pack object length
     ErrInvalidPackObjectLength,
+    /// indcates a mismatch between pack object size
+    ErrPackObjectLengthMistmatch,
 }
 
 impl Error for PackFileError {}
@@ -53,7 +56,7 @@ impl Display for PackFileError {
 #[derive(Debug, Clone)]
 pub enum PackObject {
     Simple {
-        kind: ObjectKind,
+        // kind: ObjectKind,
         data: bytes::Bytes,
         // offset: u64,
     },
@@ -71,15 +74,36 @@ pub enum PackObject {
 }
 
 impl PackObject {
-    pub fn new_simple(object_type: PackObjectType, data: Bytes) -> PackObject {
+    pub fn new_simple(data: &mut Bytes, size: u64) -> Result<PackObject> {
+        // data is the compressed object data
+        let mut decompressed = Vec::new();
+        let read = ZlibDecoder::new(&data[..]).read_to_end(&mut decompressed)?;
+        if read != size {
+            return Err(PackFileError::ErrInvalidPackObjectLength);
+        }
+        data.advance(read);
+
+        Ok(PackObject::Simple {
+            data: Bytes::from(decompressed),
+        })
+    }
+
+    pub fn new_ofs_delta(data: &mut Bytes, size: u64) -> PackObject {
+        /*
+            data:
+                negative relative offset from the delta object's position in the pack
+                compressed delta data
+        */
+
         todo!()
     }
 
-    pub fn new_ofs_delta(data: Bytes) -> PackObject {
-        todo!()
-    }
-
-    pub fn new_ref_delte(data: Bytes) -> PackObject {
+    pub fn new_ref_delte(data: &mut Bytes, size: u64) -> PackObject {
+        /*
+           data:
+               base object name
+               compressed delta data
+        */
         todo!()
     }
 }
@@ -198,15 +222,13 @@ impl PackFile {
                 object_size |= ((b & 0b0111_1111) as u64) << (7 * i + 4);
             }
 
-            let object_data = self.data.split_to(usize::try_from(object_size)?);
-
             let obj = match object_type {
                 PackObjectType::Blob
                 | PackObjectType::Commit
                 | PackObjectType::Tag
-                | PackObjectType::Tree => PackObject::new_simple(object_type, object_data),
-                PackObjectType::OfsDelta => PackObject::new_ofs_delta(object_data),
-                PackObjectType::RefDelta => PackObject::new_ref_delte(object_data),
+                | PackObjectType::Tree => PackObject::new_simple(&mut self.data, object_size),
+                PackObjectType::OfsDelta => PackObject::new_ofs_delta(&mut self.data, object_size),
+                PackObjectType::RefDelta => PackObject::new_ref_delte(&mut self.data, object_size),
             };
 
             pack_objects.push(obj)
