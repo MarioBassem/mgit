@@ -42,11 +42,21 @@ impl Display for ObjectError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub(crate) enum ObjectKind {
+pub enum Object {
     Blob,
-    Tree,
     Commit,
+    Tree,
+    Tag,
+}
+
+impl Object {
+    pub fn new(data: Vec<u8>) -> Result<Object> {
+        todo!()
+    }
+
+    pub fn hash(&self) -> Result<Vec<u8>> {
+        todo!()
+    }
 }
 
 fn write_object(compressed_content: Vec<u8>) -> Result<Hash> {

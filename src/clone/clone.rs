@@ -1,4 +1,5 @@
-use crate::{objects::hash::Hash, pack_file::pack_file::PackFile};
+use crate::objects::hash::Hash;
+use crate::pack_protocol::pack_file::PackFile;
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::blocking;
 use std::{collections::HashMap, io::Read, io::Write, path::PathBuf};
@@ -96,7 +97,7 @@ fn discover_refs(url: &str) -> Result<DiscoveredRefs> {
     Ok(DiscoveredRefs { refs, capabilities })
 }
 
-fn fetch_refs(url: &str, refs: &[&str]) -> Result<Vec<Ref>> {
+fn fetch_refs(url: &str, refs: &[&str]) -> Result<()> {
     let client = reqwest::blocking::Client::new();
     let url = Url::parse(format!("{}/git-upload-pack", url).as_str())?;
 
@@ -125,13 +126,10 @@ fn fetch_refs(url: &str, refs: &[&str]) -> Result<Vec<Ref>> {
     let header = header.trim();
     anyhow::ensure!(header == "NAK", "only NAK response is supported");
 
-    let mut pack_file = PackFile::new(bytes.clone());
-    let _header = pack_file.read_header()?;
-
-    while let Some(pack_object) = pack_file.read_item()?{
-        match pack_object{
-            
-        }
+    let mut pack_file = PackFile::new(bytes.clone())?;
+    let pack_objects = pack_file.read_objects()?;
+    for pack_obj in pack_objects {
+        // let (hash, obj) = pack_obj.prepare()?;
     }
     todo!()
 }
