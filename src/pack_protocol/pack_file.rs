@@ -4,7 +4,11 @@ use crate::{
 };
 use anyhow::Result;
 use bytes::{Buf, Bytes};
-use std::{collections::HashMap, error::Error, fmt::Display};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{format, Display},
+};
 
 pub struct PackFile {
     data: Bytes,
@@ -26,6 +30,10 @@ pub enum PackFileError {
     ErrPackObjectLengthMistmatch,
     /// indicates an invalid delta instruction
     ErrInvalidDeltaInstruction(String),
+    /// indicates an error while referring to base object for offset delta object
+    ErrOffsetDeltaBaseObject(String),
+    /// indicates an error while referring to base object for ref delta object
+    ErrRefDeltaBaseObject(String),
 }
 
 impl Error for PackFileError {}
@@ -46,6 +54,12 @@ impl Display for PackFileError {
             ),
             Self::ErrInvalidDeltaInstruction(err) => {
                 write!(f, "invalid delta instruction: {}", err)
+            }
+            Self::ErrOffsetDeltaBaseObject(err) => {
+                write!(f, "failed to get offset delta base object: {}", err)
+            }
+            Self::ErrRefDeltaBaseObject(err) => {
+                write!(f, "failed to get ref delta base object: {}", err)
             }
         }
     }
@@ -86,13 +100,14 @@ impl PackFile {
     }
 
     pub fn read_objects(&mut self) -> Result<Vec<PackObject>> {
+        let original_data_size = self.data.len();
         let mut pack_objects = Vec::new();
-        let mut offset: usize = 0;
+
         for _ in 0..self.items_expected {
+            let cur_data_size = self.data.len();
             let mut object_header_bytes = Vec::new();
             loop {
                 let b = self.data.get_u8();
-                offset += 1;
 
                 object_header_bytes.push(b);
 
@@ -114,33 +129,38 @@ impl PackFile {
                 object_size |= ((b & 0b0111_1111) as u64) << (7 * i + 4);
             }
 
-            let (obj, read) = match object_type {
+            let obj = match object_type {
                 PackObjectType::Blob
                 | PackObjectType::Commit
                 | PackObjectType::Tag
-                | PackObjectType::Tree => {
-                    PackObject::new_simple(&mut self.data, object_size.try_into()?, offset)?
-                }
-                PackObjectType::OfsDelta => {
-                    PackObject::new_ofs_delta(&mut self.data, object_size.try_into()?, offset)?
-                }
-                PackObjectType::RefDelta => {
-                    PackObject::new_ref_delte(&mut self.data, object_size.try_into()?, offset)?
-                }
+                | PackObjectType::Tree => PackObject::new_simple(
+                    &mut self.data,
+                    object_size.try_into()?,
+                    original_data_size - cur_data_size,
+                )?,
+                PackObjectType::OfsDelta => PackObject::new_ofs_delta(
+                    &mut self.data,
+                    object_size.try_into()?,
+                    original_data_size - cur_data_size,
+                )?,
+                PackObjectType::RefDelta => PackObject::new_ref_delte(
+                    &mut self.data,
+                    object_size.try_into()?,
+                    original_data_size - cur_data_size,
+                )?,
             };
 
             pack_objects.push(obj);
-            offset += read;
         }
 
         Ok(pack_objects)
     }
 
     pub fn build_objects(&self, pack_objs: Vec<PackObject>) -> Result<Vec<Object>> {
-        let mut offsetIndex = HashMap::new();
-        let mut hashIndex = HashMap::new();
+        let mut offset_index = HashMap::new();
+        let mut hash_index = HashMap::new();
         let mut objs = Vec::new();
-        for (i, pack_obj) in pack_objs.iter().enumerate() {
+        for (_, pack_obj) in pack_objs.iter().enumerate() {
             match pack_obj {
                 PackObject::OfsDelta {
                     offset,
@@ -149,14 +169,24 @@ impl PackFile {
                     base_size,
                     reconstructed_size,
                 } => {
-                    let base_index = offsetIndex.get(base_offset).ok_or(todo!())?;
+                    let base_index = offset_index.get(base_offset).ok_or(
+                        PackFileError::ErrOffsetDeltaBaseObject(format!(
+                            "base object not found at offset {}",
+                            base_offset
+                        )),
+                    )?;
 
-                    let base_obj = objs.get(*base_index).ok_or(todo!())?;
-                    let new_obj = pack_obj.apply_delta_instructions(base_obj)?;
+                    let base_obj: &Object = objs.get(*base_index).unwrap(); // should always succeed
+                    assert_eq!(*base_size, base_obj.size());
+
+                    let new_obj =
+                        PackObject::apply_delta_instructions(pack_obj, base_obj, instructions)?;
+                    assert_eq!(*reconstructed_size, new_obj.size());
+
                     let hash = new_obj.hash()?;
                     objs.push(new_obj);
-                    offsetIndex.insert(offset, objs.len() - 1);
-                    hashIndex.insert(hash, objs.len() - 1);
+                    offset_index.insert(offset, objs.len() - 1);
+                    hash_index.insert(hash, objs.len() - 1);
                 }
                 PackObject::RefDelta {
                     offset,
@@ -165,21 +195,32 @@ impl PackFile {
                     base_size,
                     reconstructed_size,
                 } => {
-                    let base_index = hashIndex.get(base_name).ok_or(todo!())?;
+                    let base_index =
+                        hash_index
+                            .get(base_name)
+                            .ok_or(PackFileError::ErrRefDeltaBaseObject(format!(
+                                "base object not found: {:02x?}",
+                                base_name
+                            )))?;
 
-                    let base_obj = objs.get(*base_index).ok_or(todo!())?;
-                    let new_obj = pack_obj.apply_delta_instructions(base_obj)?;
+                    let base_obj = objs.get(*base_index).unwrap(); // should always succeed
+                    assert_eq!(*base_size, base_obj.size());
+
+                    let new_obj =
+                        PackObject::apply_delta_instructions(pack_obj, base_obj, instructinos)?;
+                    assert_eq!(*reconstructed_size, new_obj.size());
+
                     let hash = new_obj.hash()?;
                     objs.push(new_obj);
-                    offsetIndex.insert(offset, objs.len() - 1);
-                    hashIndex.insert(hash, objs.len() - 1);
+                    offset_index.insert(offset, objs.len() - 1);
+                    hash_index.insert(hash, objs.len() - 1);
                 }
                 PackObject::Simple { data, offset } => {
                     let object = Object::new(data.to_vec())?;
                     let hash = object.hash()?;
                     objs.push(object);
-                    offsetIndex.insert(offset, objs.len() - 1);
-                    hashIndex.insert(hash, objs.len() - 1);
+                    offset_index.insert(offset, objs.len() - 1);
+                    hash_index.insert(hash, objs.len() - 1);
                 }
             }
         }

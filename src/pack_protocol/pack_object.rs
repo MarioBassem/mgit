@@ -17,25 +17,20 @@ pub enum PackObject {
         offset: usize,
         base_name: Vec<u8>,
         instructinos: Vec<DeltaInstruction>,
-        base_size: u64,
-        reconstructed_size: u64,
+        base_size: usize,
+        reconstructed_size: usize,
     },
-    #[allow(dead_code)]
     OfsDelta {
         offset: usize,
         base_offset: usize,
         instructions: Vec<DeltaInstruction>,
-        base_size: u64,
-        reconstructed_size: u64,
+        base_size: usize,
+        reconstructed_size: usize,
     },
 }
 
 impl PackObject {
-    pub fn new_simple(
-        data: &mut Bytes,
-        size: usize,
-        obj_offset: usize,
-    ) -> Result<(PackObject, usize)> {
+    pub fn new_simple(data: &mut Bytes, size: usize, obj_offset: usize) -> Result<PackObject> {
         // data is the compressed object data
         let mut decompressed = Vec::new();
         let read = ZlibDecoder::new(&data[..]).read_to_end(&mut decompressed)?;
@@ -44,28 +39,19 @@ impl PackObject {
         }
         data.advance(read);
 
-        Ok((
-            PackObject::Simple {
-                data: Bytes::from(decompressed),
-                offset: obj_offset,
-            },
-            read,
-        ))
+        Ok(PackObject::Simple {
+            data: Bytes::from(decompressed),
+            offset: obj_offset,
+        })
     }
 
-    pub fn new_ofs_delta(
-        data: &mut Bytes,
-        size: usize,
-        obj_offset: usize,
-    ) -> Result<(PackObject, usize)> {
+    pub fn new_ofs_delta(data: &mut Bytes, size: usize, obj_offset: usize) -> Result<PackObject> {
         /*
             data:
                 negative relative offset from the delta object's position in the pack
                 compressed delta data
         */
-        let mut total_size = 0;
-        let (offset, read) = Self::read_variable_length(data);
-        total_size += read;
+        let offset = Self::read_variable_length(data);
 
         let mut decompressed = Vec::new();
         let read = ZlibDecoder::new(&data[..]).read_to_end(&mut decompressed)?;
@@ -73,39 +59,30 @@ impl PackObject {
             return Err(PackFileError::ErrPackObjectLengthMistmatch.into());
         }
         data.advance(read);
-        total_size += read;
 
         let mut decompressed_bytes = Bytes::from(decompressed);
-        let (base_size, _) = Self::read_variable_length(&mut decompressed_bytes);
-        let (reconstructed_size, _) = Self::read_variable_length(&mut decompressed_bytes);
+        let base_size = usize::try_from(Self::read_variable_length(&mut decompressed_bytes))?;
+        let reconstructed_size =
+            usize::try_from(Self::read_variable_length(&mut decompressed_bytes))?;
 
         let instructions = Self::parse_delta_instructions(decompressed_bytes)?;
 
-        Ok((
-            PackObject::OfsDelta {
-                offset: obj_offset,
-                base_offset: obj_offset - usize::try_from(offset)?,
-                instructions,
-                base_size,
-                reconstructed_size,
-            },
-            total_size,
-        ))
+        Ok(PackObject::OfsDelta {
+            offset: obj_offset,
+            base_offset: obj_offset - usize::try_from(offset)?,
+            instructions,
+            base_size,
+            reconstructed_size,
+        })
     }
 
-    pub fn new_ref_delte(
-        data: &mut Bytes,
-        size: u64,
-        obj_offset: usize,
-    ) -> Result<(PackObject, usize)> {
+    pub fn new_ref_delte(data: &mut Bytes, size: u64, obj_offset: usize) -> Result<PackObject> {
         /*
            data:
                base object name
                compressed delta data
         */
-        let mut total_read = 0;
         let base_obj_name = data.split_to(20);
-        total_read += 20;
 
         let mut decompressed = Vec::new();
         let read = ZlibDecoder::new(&data[..]).read_to_end(&mut decompressed)?;
@@ -113,32 +90,27 @@ impl PackObject {
             return Err(PackFileError::ErrPackObjectLengthMistmatch.into());
         }
         data.advance(read);
-        total_read += read;
 
         let mut decompressed_bytes = Bytes::from(decompressed);
-        let (base_size, _) = Self::read_variable_length(&mut decompressed_bytes);
-        let (reconstructed_size, _) = Self::read_variable_length(&mut decompressed_bytes);
+        let base_size = usize::try_from(Self::read_variable_length(&mut decompressed_bytes))?;
+        let reconstructed_size =
+            usize::try_from(Self::read_variable_length(&mut decompressed_bytes))?;
 
         let instructions = Self::parse_delta_instructions(decompressed_bytes)?;
 
-        Ok((
-            PackObject::RefDelta {
-                offset: obj_offset,
-                base_name: base_obj_name.to_vec(),
-                instructinos: instructions,
-                base_size,
-                reconstructed_size,
-            },
-            total_read,
-        ))
+        Ok(PackObject::RefDelta {
+            offset: obj_offset,
+            base_name: base_obj_name.to_vec(),
+            instructinos: instructions,
+            base_size,
+            reconstructed_size,
+        })
     }
 
-    fn read_variable_length(data: &mut Bytes) -> (u64, usize) {
-        let mut read = 0;
+    fn read_variable_length(data: &mut Bytes) -> u64 {
         let mut size: u64 = 0;
         for i in 0.. {
             let b = data.get_u8();
-            read += 1;
             size |= ((b & 0b0111_1111) as u64) << (7 * i);
 
             if b & (1 << 7) == 0 {
@@ -146,7 +118,7 @@ impl PackObject {
             }
         }
 
-        (size, read)
+        size
     }
 
     fn parse_delta_instructions(mut data: Bytes) -> Result<Vec<DeltaInstruction>> {
@@ -198,7 +170,11 @@ impl PackObject {
         Ok(instructions)
     }
 
-    pub fn apply_delta_instructions(&self, base_obj: &Object) -> Result<Object> {
+    pub fn apply_delta_instructions(
+        pack_obj: &PackObject,
+        base_obj: &Object,
+        instructions: &Vec<DeltaInstruction>,
+    ) -> Result<Object> {
         todo!()
     }
 }
