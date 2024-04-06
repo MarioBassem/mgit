@@ -2,6 +2,7 @@ mod blob;
 mod commit;
 mod compress;
 pub mod hash;
+mod tag;
 mod tree;
 
 use std::{
@@ -12,9 +13,13 @@ use std::{
     path::PathBuf,
 };
 
-use self::hash::{hash, Hash, HashHex};
+use self::{
+    compress::compress,
+    hash::{hash, Hash, HashHex},
+};
 
 use anyhow::Result;
+use bytes::Bytes;
 
 const OBJECTS_DIR: &str = ".git/objects";
 
@@ -43,10 +48,33 @@ impl Display for ObjectError {
 }
 
 pub enum Object {
-    Blob,
-    Commit,
-    Tree,
-    Tag,
+    Blob { data: Bytes },
+    Commit { data: Bytes },
+    Tree { data: Bytes },
+    Tag { data: Bytes },
+}
+
+pub trait ObjectTrait {
+    /// writes object to appropriate place
+    fn write(&self) -> Result<()>;
+    /// hashes object data
+    fn hash(&self) -> Result<Vec<u8>> {
+        hash(self.data())
+    }
+    /// gets 40 byte hash in hexadecimal format
+    fn hash_hex(&self) -> String {
+        format!("{:02x?}", self.data())
+    }
+    /// compresses object data
+    fn compress(&self) -> Result<Vec<u8>> {
+        compress(self.data())
+    }
+    /// returns decompressed object data
+    fn data(&self) -> &Vec<u8>;
+
+    fn size(&self) -> usize {
+        self.data().len()
+    }
 }
 
 impl Object {
@@ -55,6 +83,10 @@ impl Object {
     }
 
     pub fn hash(&self) -> Result<Vec<u8>> {
+        todo!()
+    }
+
+    pub fn size(&self) -> usize {
         todo!()
     }
 }
