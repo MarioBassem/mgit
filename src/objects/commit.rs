@@ -1,6 +1,9 @@
 use crate::objects::{compress::compress, write_object};
 
-use super::hash::{Hash, HashHex};
+use super::{
+    hash::{Hash, HashHex},
+    Object,
+};
 use anyhow::Result;
 
 pub struct Author {
@@ -8,6 +11,26 @@ pub struct Author {
     email: String,
     time: u64,
     time_zone: String,
+}
+
+pub fn new_commit(
+    tree: HashHex,
+    parents: Vec<HashHex>,
+    author: Author,
+    committer: Option<Author>,
+    message: Option<String>,
+) -> Object {
+    Object::Commit {
+        tree,
+        author,
+        parents,
+        message,
+        committer,
+    }
+}
+
+pub fn parse_commit(data: Vec<u8>) -> Result<Object> {
+    todo!()
 }
 
 pub fn write_commit(

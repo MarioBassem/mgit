@@ -6,28 +6,12 @@ use std::{
 
 use anyhow::{bail, Result};
 
-use crate::objects::{
-    compress::{self, decompress},
-    hash::Hash,
-    ObjectError,
-};
+use crate::objects::{compress::decompress, ObjectError};
 
-use super::{hash::HashHex, write_object, OBJECTS_DIR};
+use super::{hash::HashHex, Object, OBJECTS_DIR};
 
-/// write file as blob
-pub fn write_blob(path: PathBuf) -> Result<Hash> {
-    // read file content
-    let file_content = fs::read_to_string(path)?;
-    let blob_content = format!("blob {}\0{}", file_content.len(), file_content);
-
-    // compress content
-    let compressed_content = compress::compress(blob_content.into_bytes())?;
-
-    // write object
-    let hash = write_object(compressed_content)?;
-
-    // return hash
-    Ok(hash)
+pub fn new_blob(data: Vec<u8>) -> Object {
+    Object::Blob { data }
 }
 
 /// read blob contents

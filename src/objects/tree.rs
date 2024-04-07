@@ -15,8 +15,16 @@ use crate::objects::{
 
 use super::{
     hash::{Hash, HashHex},
-    ObjectError,
+    Object, ObjectError,
 };
+
+pub fn new_tree(entries: Vec<Entry>) -> Object {
+    todo!()
+}
+
+pub fn parse_tree(data: Vec<u8>) -> Result<Object> {
+    todo!()
+}
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Entry {

@@ -1,10 +1,21 @@
 use bytes::Bytes;
 
-use super::{commit::Author, Object, ObjectTrait};
+use super::{commit::Author, hash::HashHex, Object, ObjectKind, ObjectTrait};
 use anyhow::Result;
 
-pub struct AnnotatedTag {
-    data: Vec<u8>,
+pub fn new_tag(
+    object: HashHex,
+    object_type: ObjectKind,
+    tag_name: String,
+    tagger: Author,
+    commit_message: Option<String>,
+    signature: Option<String>,
+) -> Object {
+    todo!()
+}
+
+pub fn parse_tag(data: Vec<u8>) -> Result<Object> {
+    todo!()
 }
 
 /*
@@ -17,25 +28,3 @@ pub struct AnnotatedTag {
         signature
 
 */
-
-impl ObjectTrait for AnnotatedTag {
-    fn write(&self) -> Result<()> {
-        todo!()
-    }
-
-    fn hash(&self) -> Result<Vec<u8>> {
-        todo!()
-    }
-
-    fn hash_hex(&self) -> Result<String> {
-        todo!()
-    }
-
-    fn compress(&self) -> Result<Vec<u8>> {
-        todo!()
-    }
-
-    fn data(&self) -> &Vec<u8> {
-        todo!()
-    }
-}
