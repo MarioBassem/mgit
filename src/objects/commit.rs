@@ -1,14 +1,5 @@
-use core::time;
-use std::io::Read;
-
-use crate::objects::{compress::compress, write_object};
-
-use super::{
-    hash::{Hash, HashHex},
-    Object,
-};
+use super::{hash::HashHex, Object};
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
 
 pub struct Commit {
     tree: HashHex,
@@ -51,8 +42,8 @@ pub fn decode_commit(mut data: Vec<u8>) -> Result<Commit> {
     let parents = get_commit_parents(&mut data)?;
     let author = get_author(&mut data)?;
     let committer = get_committer(&mut data)?;
+    let additional_data = get_additional_data(&mut data)?;
     let message = get_commit_message(&mut data)?;
-    let additional_data = get_additional_data(&mut data);
 
     Ok(Commit {
         author,
@@ -72,8 +63,6 @@ fn get_tree_hash_hex(data: &mut Vec<u8>) -> Result<HashHex> {
     /*
         tree SP hash_hex LF
     */
-    let x = Bytes::new();
-
     let tree_str = data.split_off(5);
     if tree_str.as_slice() != "tree ".as_bytes() {
         return Err(anyhow!("missing tree hash"));
@@ -170,27 +159,27 @@ fn get_committer(data: &mut Vec<u8>) -> Result<Author> {
     })
 }
 
-fn get_signature(data: &mut Vec<u8>) -> Result<Option<String>> {
-    match data.first_chunk::<7>() {
-        None => return Ok(None),
-        Some(d) => {
-            if d != "gpgsig ".as_bytes() {
-                return Ok(None);
-            }
-            data.split_off(7);
-        }
-    }
+fn get_additional_data(data: &mut Vec<u8>) -> Result<Option<String>> {
+    /*
+        read until LF LF is reached
+    */
 
-    let mut sig = String::new();
+    let mut additional_data: Option<String> = None;
     for i in 0..data.len() {
-        if data[i] == b'\n' {
-            sig = String::from_utf8(data.split_off(i))?;
-            get_char(data, b'\n')?;
+        if i < data.len() - 1 && data[i] == b'\n' && data[i + 1] == b'\n' {
+            additional_data = Some(String::from_utf8(data.split_off(i))?);
+            data.split_off(2);
             break;
         }
     }
 
-    Ok(Some(sig))
+    Ok(additional_data)
+}
+
+fn get_commit_message(data: &mut Vec<u8>) -> Result<String> {
+    // TODO: message data should be escaped
+    let message = String::from_utf8(data.to_vec())?;
+    Ok(message)
 }
 
 fn get_char(data: &mut Vec<u8>, b: u8) -> Result<()> {
@@ -207,56 +196,56 @@ fn get_char(data: &mut Vec<u8>, b: u8) -> Result<()> {
     Ok(())
 }
 
-pub fn write_commit(
-    tree_hash_hex: HashHex,
-    parents: Vec<HashHex>,
-    author: Author,
-    message: String,
-) -> Result<Hash> {
-    // TODO: validate tree exists
-    // TODO: validate parent commits exist
+// pub fn write_commit(
+//     tree_hash_hex: HashHex,
+//     parents: Vec<HashHex>,
+//     author: Author,
+//     message: String,
+// ) -> Result<Hash> {
+//     // TODO: validate tree exists
+//     // TODO: validate parent commits exist
 
-    // create content
-    let mut content = Vec::new();
-    let tree_hash = tree_hash_hex.get_hash()?;
-    content.append(&mut "tree ".as_bytes().to_vec());
-    content.append(&mut tree_hash.into());
+//     // create content
+//     let mut content = Vec::new();
+//     let tree_hash = tree_hash_hex.get_hash()?;
+//     content.append(&mut "tree ".as_bytes().to_vec());
+//     content.append(&mut tree_hash.into());
 
-    for parent in parents {
-        let parent_hash = parent.get_hash()?;
-        content.append(&mut "parent ".as_bytes().to_vec());
-        content.append(&mut parent_hash.into());
-    }
+//     for parent in parents {
+//         let parent_hash = parent.get_hash()?;
+//         content.append(&mut "parent ".as_bytes().to_vec());
+//         content.append(&mut parent_hash.into());
+//     }
 
-    content.append(
-        &mut format!(
-            "author {} <{}> {} {}",
-            author.name, author.email, author.time, author.time_zone
-        )
-        .as_bytes()
-        .to_vec(),
-    );
-    content.append(
-        &mut format!(
-            "committer {} <{}> {} {}",
-            author.name, author.email, author.time, author.time_zone
-        )
-        .as_bytes()
-        .to_vec(),
-    );
+//     content.append(
+//         &mut format!(
+//             "author {} <{}> {} {}",
+//             author.name, author.email, author.time, author.time_zone
+//         )
+//         .as_bytes()
+//         .to_vec(),
+//     );
+//     content.append(
+//         &mut format!(
+//             "committer {} <{}> {} {}",
+//             author.name, author.email, author.time, author.time_zone
+//         )
+//         .as_bytes()
+//         .to_vec(),
+//     );
 
-    content.append(&mut "\n".as_bytes().to_vec());
-    content.append(&mut message.as_bytes().to_vec());
+//     content.append(&mut "\n".as_bytes().to_vec());
+//     content.append(&mut message.as_bytes().to_vec());
 
-    let mut commit_object_content = format!("commit {}\0", content.len()).as_bytes().to_vec();
-    commit_object_content.append(&mut content);
+//     let mut commit_object_content = format!("commit {}\0", content.len()).as_bytes().to_vec();
+//     commit_object_content.append(&mut content);
 
-    // compress
-    let compressed_object = compress(commit_object_content)?;
+//     // compress
+//     let compressed_object = compress(&commit_object_content)?;
 
-    // write object
-    let hash = write_object(compressed_object)?;
+//     // write object
+//     let hash = write_object(compressed_object)?;
 
-    // return hash
-    Ok(hash)
-}
+//     // return hash
+//     Ok(hash)
+// }
