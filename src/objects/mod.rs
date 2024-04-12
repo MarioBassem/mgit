@@ -2,8 +2,8 @@ pub mod blob;
 pub mod commit;
 mod compress;
 pub mod hash;
-mod tag;
-mod tree;
+pub mod tag;
+pub mod tree;
 
 use std::{
     error::Error,
@@ -14,14 +14,15 @@ use std::{
 };
 
 use self::{
-    commit::Author,
+    blob::Blob,
+    commit::{Author, Commit},
     compress::compress,
     hash::{hash, Hash, HashHex},
+    tag::Tag,
     tree::Entry,
 };
 
-use anyhow::Result;
-use bytes::Bytes;
+use anyhow::{anyhow, Result};
 
 const OBJECTS_DIR: &str = ".git/objects";
 
@@ -49,28 +50,9 @@ impl Display for ObjectError {
     }
 }
 
-pub enum Object {
-    Blob {
-        data: Vec<u8>,
-    },
-    Commit {
-        tree: HashHex,
-        author: Author,
-        committer: Option<Author>,
-        parents: Vec<HashHex>,
-        message: String,
-    },
-    Tree {
-        entries: Vec<Entry>,
-    },
-    Tag {
-        object: HashHex,
-        object_type: ObjectKind,
-        tag_name: String,
-        tagger: Author,
-        commit_message: Option<String>,
-        signature: Option<String>,
-    },
+pub struct Object {
+    data: Vec<u8>,
+    kind: ObjectKind,
 }
 
 pub enum ObjectKind {
@@ -78,6 +60,32 @@ pub enum ObjectKind {
     Commit,
     Tree,
     Tag,
+}
+
+impl TryFrom<&str> for ObjectKind {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> std::prelude::v1::Result<Self, Self::Error> {
+        let val = match value {
+            "blob" => ObjectKind::Blob,
+            "commit" => ObjectKind::Commit,
+            "tag" => ObjectKind::Tag,
+            "tree" => ObjectKind::Tree,
+            _ => return Err(anyhow!("invalid object kind {}", value)),
+        };
+
+        Ok(val)
+    }
+}
+
+impl Display for ObjectKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ObjectKind::Blob => write!(f, "blob"),
+            ObjectKind::Commit => write!(f, "commit"),
+            ObjectKind::Tag => write!(f, "tag"),
+            ObjectKind::Tree => write!(f, "tree"),
+        }
+    }
 }
 
 impl Object {
@@ -90,13 +98,13 @@ impl Object {
     }
 
     pub fn write(&self) -> Result<Hash> {
-        let mut object_data = self.prep_content();
+        let mut object_data = self.encode();
 
         // compress content
         let compressed_content = compress::compress(&object_data)?;
 
         // hash
-        let hash = hash(&compressed_content)?;
+        let hash = hash(&compressed_content);
 
         // write blob to path from hashhex
         let hash_hex = HashHex::from(&hash);
@@ -113,24 +121,13 @@ impl Object {
         Ok(hash)
     }
 
-    fn prep_content(&self) -> Vec<u8> {
-        let content = Vec::new();
-
-        let pre = match self.kind {
-            ObjectKind::Blob => "blob",
-            ObjectKind::Commit => "commit",
-            ObjectKind::Tag => "tag",
-            ObjectKind::Tree => "tree",
-        };
-
-        content.append(&mut format!("{} {}\0", pre, self.data.len()).as_bytes());
-        content.append(&mut self.data.clone());
-
-        content
+    /// encodes object content into a vector of bytes and adds the object header
+    pub fn encode(&self) -> Vec<u8> {
+        todo!()
     }
 
     pub fn hash(&self) -> Result<Hash> {
-        let mut blob_content = self.prep_content();
+        let mut blob_content = self.encode();
 
         // compress content
         let compressed_content = compress::compress(&blob_content)?;
@@ -150,6 +147,4 @@ impl Object {
     // pub fn size(&self) -> usize {
     //     self.data.len()
     // }
-
-    fn write_object(&self, compressed_content: Vec<u8>) -> Result<Hash> {}
 }
