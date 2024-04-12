@@ -1,4 +1,5 @@
-use anyhow::{bail, Ok, Result};
+use anyhow::{anyhow, bail, Ok, Result};
+use bytes::BufMut;
 use std::{
     fmt::Display,
     fs::{self, DirEntry},
@@ -18,12 +19,51 @@ use super::{
     Object, ObjectError,
 };
 
-pub fn new_tree(entries: Vec<Entry>) -> Object {
+pub struct Tree {
+    entries: Vec<Entry>,
+}
+
+pub fn new_tree(entries: Vec<Entry>) -> Tree {
     todo!()
 }
 
-pub fn parse_tree(data: Vec<u8>) -> Result<Object> {
-    todo!()
+pub fn decode_tree(mut data: Vec<u8>) -> Result<Tree> {
+    let mut entries = Vec::<Entry>::new();
+    while data.len() > 0 {
+        let mut tree_entry_info: String;
+        let mut hash: Vec<u8>;
+        for (i, b) in data.iter().enumerate() {
+            if *b == b'\0' {
+                tree_entry_info = String::from_utf8(data.split_off(i))?;
+                data.split_off(1);
+                hash = data.split_off(20);
+                break;
+            }
+        }
+
+        let (mode_str, name_str) = tree_entry_info
+            .split_once(' ')
+            .ok_or(anyhow!("invalid tree entry information"))?;
+        let mode = get_mode_from_bytes(mode_str)?;
+
+        entries.push(Entry {
+            hash: Hash::from(hash),
+            mode,
+            name: String::from_str(name_str)?,
+        });
+    }
+
+    Ok(Tree { entries })
+}
+
+pub fn encode_tree(tree: Tree) -> Vec<u8> {
+    let mut data = Vec::new();
+    for entry in tree.entries {
+        data.append(&mut format!("{} {}\0", entry.mode, entry.name).into_bytes());
+        data.append(&mut entry.hash.to_vec())
+    }
+
+    data
 }
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -90,111 +130,112 @@ impl Display for EntryMode {
         }
     }
 }
-pub fn write_tree(path: PathBuf) -> Result<Hash> {
-    // list current dir entries
-    let paths = fs::read_dir("./")?;
 
-    // for each entry call its write method
-    let mut children_content = Vec::new();
-    for path in paths {
-        let dir_entry = path?;
-        let entry = Entry::from_dir_entry(dir_entry)?;
-        children_content.append(&mut entry.into());
-    }
+// pub fn write_tree(path: PathBuf) -> Result<Hash> {
+//     // list current dir entries
+//     let paths = fs::read_dir("./")?;
 
-    // generate tree file content
-    let mut tree_object_content = format!("tree {}\0", children_content.len())
-        .as_bytes()
-        .to_vec();
+//     // for each entry call its write method
+//     let mut children_content = Vec::new();
+//     for path in paths {
+//         let dir_entry = path?;
+//         let entry = Entry::from_dir_entry(dir_entry)?;
+//         children_content.append(&mut entry.into());
+//     }
 
-    tree_object_content.append(&mut children_content);
-    // compress content
-    let compressed_content = compress(tree_object_content)?;
+//     // generate tree file content
+//     let mut tree_object_content = format!("tree {}\0", children_content.len())
+//         .as_bytes()
+//         .to_vec();
 
-    // write object
-    let hash = write_object(compressed_content)?;
+//     tree_object_content.append(&mut children_content);
+//     // compress content
+//     let compressed_content = compress(tree_object_content)?;
 
-    // return hash
-    Ok(hash)
-}
+//     // write object
+//     let hash = write_object(compressed_content)?;
 
-pub fn read_tree(hash_hex: HashHex) -> Result<Vec<Entry>> {
-    // get path from hashhex
-    let (dir_name, file_name) = hash_hex.get_object_path();
+//     // return hash
+//     Ok(hash)
+// }
 
-    // read tree content
-    let file = fs::File::open(PathBuf::from(OBJECTS_DIR).join(dir_name).join(file_name))?;
+// pub fn read_tree(hash_hex: HashHex) -> Result<Vec<Entry>> {
+//     // get path from hashhex
+//     let (dir_name, file_name) = hash_hex.get_object_path();
 
-    // decompress
-    let decompressed_content = decompress(file)?;
+//     // read tree content
+//     let file = fs::File::open(PathBuf::from(OBJECTS_DIR).join(dir_name).join(file_name))?;
 
-    // parse
-    let entries = parse_tree(decompressed_content)?;
+//     // decompress
+//     let decompressed_content = decompress(file)?;
 
-    // return list of entries
-    Ok(entries)
-}
+//     // parse
+//     let entries = decode_tree(decompressed_content)?;
 
-fn parse_tree(data: String) -> Result<Vec<Entry>> {
-    let mut rest = data;
-    if !rest.starts_with("tree ") {
-        bail!(ObjectError::ErrParse(String::from(
-            "failed to read 'tree' type"
-        )))
-    }
+//     // return list of entries
+//     Ok(entries)
+// }
 
-    let rest = rest.split_off("blob ".len());
-    let (size_str, content) = rest
-        .split_once('\0')
-        .ok_or(ObjectError::ErrParse(String::from(
-            "failed to find null byte",
-        )))?;
+// fn parse_tree(data: String) -> Result<Vec<Entry>> {
+//     let mut rest = data;
+//     if !rest.starts_with("tree ") {
+//         bail!(ObjectError::ErrParse(String::from(
+//             "failed to read 'tree' type"
+//         )))
+//     }
 
-    // match size to content length
-    let size = size_str.parse::<usize>()?;
+//     let rest = rest.split_off("blob ".len());
+//     let (size_str, content) = rest
+//         .split_once('\0')
+//         .ok_or(ObjectError::ErrParse(String::from(
+//             "failed to find null byte",
+//         )))?;
 
-    if content.len() != size {
-        bail!(ObjectError::ErrParse(format!(
-            "size is incorrect: found {} expected {}",
-            content.len(),
-            size
-        )))
-    }
+//     // match size to content length
+//     let size = size_str.parse::<usize>()?;
 
-    let mut read_bytes = 0;
-    let mut entries = Vec::<Entry>::new();
-    while read_bytes < size {
-        let (mode_str, content) = content
-            .split_once(' ')
-            .ok_or(ObjectError::ErrParse(format!(
-                "failed to parse tree entry mode"
-            )))?;
+//     if content.len() != size {
+//         bail!(ObjectError::ErrParse(format!(
+//             "size is incorrect: found {} expected {}",
+//             content.len(),
+//             size
+//         )))
+//     }
 
-        read_bytes += mode_str.len() + 1;
+//     let mut read_bytes = 0;
+//     let mut entries = Vec::<Entry>::new();
+//     while read_bytes < size {
+//         let (mode_str, content) = content
+//             .split_once(' ')
+//             .ok_or(ObjectError::ErrParse(format!(
+//                 "failed to parse tree entry mode"
+//             )))?;
 
-        let mode = get_mode_from_bytes(mode_str)?;
+//         read_bytes += mode_str.len() + 1;
 
-        let (name_str, content) =
-            content
-                .split_once('\0')
-                .ok_or(ObjectError::ErrParse(format!(
-                    "failed to parse tree entry name"
-                )))?;
+//         let mode = get_mode_from_bytes(mode_str)?;
 
-        read_bytes += name_str.len() + 1;
+//         let (name_str, content) =
+//             content
+//                 .split_once('\0')
+//                 .ok_or(ObjectError::ErrParse(format!(
+//                     "failed to parse tree entry name"
+//                 )))?;
 
-        let (hash_str, content) = content.split_at(20);
-        read_bytes += hash_str.len();
+//         read_bytes += name_str.len() + 1;
 
-        entries.push(Entry {
-            hash: Hash::from(hash_str),
-            mode,
-            name: String::from_str(name_str)?,
-        });
-    }
+//         let (hash_str, content) = content.split_at(20);
+//         read_bytes += hash_str.len();
 
-    Ok(entries)
-}
+//         entries.push(Entry {
+//             hash: Hash::from(hash_str),
+//             mode,
+//             name: String::from_str(name_str)?,
+//         });
+//     }
+
+//     Ok(entries)
+// }
 
 fn get_mode_from_bytes(mode_str: &str) -> Result<EntryMode> {
     let mode = usize::from_str_radix(mode_str, 8)?;
