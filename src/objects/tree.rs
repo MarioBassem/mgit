@@ -1,23 +1,6 @@
+use super::{hash::Hash, ObjectError};
 use anyhow::{anyhow, bail, Ok, Result};
-use bytes::BufMut;
-use std::{
-    fmt::Display,
-    fs::{self, DirEntry},
-    os::unix::fs::PermissionsExt,
-    path::PathBuf,
-    str::FromStr,
-};
-
-use crate::objects::{
-    blob::write_blob,
-    compress::{compress, decompress},
-    write_object, OBJECTS_DIR,
-};
-
-use super::{
-    hash::{Hash, HashHex},
-    Object, ObjectError,
-};
+use std::{fmt::Display, fs::DirEntry, os::unix::fs::PermissionsExt, str::FromStr};
 
 pub struct Tree {
     entries: Vec<Entry>,
@@ -47,7 +30,7 @@ pub fn decode_tree(mut data: Vec<u8>) -> Result<Tree> {
         let mode = get_mode_from_bytes(mode_str)?;
 
         entries.push(Entry {
-            hash: Hash::from(hash),
+            hash: Hash::try_from(hash.as_ref())?,
             mode,
             name: String::from_str(name_str)?,
         });
@@ -59,8 +42,7 @@ pub fn decode_tree(mut data: Vec<u8>) -> Result<Tree> {
 pub fn encode_tree(tree: Tree) -> Vec<u8> {
     let mut data = Vec::new();
     for entry in tree.entries {
-        data.append(&mut format!("{} {}\0", entry.mode, entry.name).into_bytes());
-        data.append(&mut entry.hash.to_vec())
+        data.append(&mut format!("{} {}\0{:x}", entry.mode, entry.name, entry.hash).into_bytes());
     }
 
     data

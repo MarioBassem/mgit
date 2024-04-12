@@ -13,14 +13,7 @@ use std::{
     path::PathBuf,
 };
 
-use self::{
-    blob::Blob,
-    commit::{Author, Commit},
-    compress::compress,
-    hash::{hash, Hash, HashHex},
-    tag::Tag,
-    tree::Entry,
-};
+use self::hash::{hash, Hash};
 
 use anyhow::{anyhow, Result};
 
@@ -89,7 +82,7 @@ impl Display for ObjectKind {
 }
 
 impl Object {
-    pub fn read_from_hash(hash_hex: HashHex) -> Result<Object> {
+    pub fn read_from_hash(hash_hex: String) -> Result<Object> {
         todo!()
     }
 
@@ -106,10 +99,7 @@ impl Object {
         // hash
         let hash = hash(&compressed_content);
 
-        // write blob to path from hashhex
-        let hash_hex = HashHex::from(&hash);
-
-        let (dir_name, file_name) = hash_hex.get_object_path();
+        let (dir_name, file_name) = hash.get_object_path();
 
         create_dir_all(PathBuf::from(OBJECTS_DIR).join(dir_name))?;
         fs::write(
@@ -134,10 +124,10 @@ impl Object {
 
         Ok(hash(&compressed_content))
     }
-    /// gets 40 byte hash in hexadecimal format
-    fn hash_hex(&self) -> Result<HashHex> {
-        Ok(HashHex::from(&self.hash()?))
-    }
+    // /// gets 40 byte hash in hexadecimal format
+    // fn hash_hex(&self) -> Result<HashHex> {
+    //     Ok(HashHex::from(&self.hash()?))
+    // }
 
     /// returns decompressed object data
     fn data(&self) -> &Vec<u8> {

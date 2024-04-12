@@ -1,11 +1,12 @@
-use super::{hash::HashHex, Object};
+use super::Object;
+use crate::objects::Hash;
 use anyhow::{anyhow, Result};
 
 pub struct Commit {
-    tree: HashHex,
+    tree: Hash,
     author: Author,
     committer: Author,
-    parents: Vec<HashHex>,
+    parents: Vec<Hash>,
     message: String,
     additional_data: Option<String>,
 }
@@ -20,15 +21,37 @@ pub struct Commit {
 */
 
 pub struct Author {
-    name: String,
-    email: String,
-    time: u64,
-    time_zone: String,
+    pub name: String,
+    pub email: String,
+    pub time: u64,
+    pub time_zone: String,
+}
+
+impl TryFrom<&str> for Author {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> std::prelude::v1::Result<Self, Self::Error> {
+        let mut words = value.split_whitespace();
+
+        let name = words.next().ok_or(anyhow!("invalid author data"))?;
+        let email = words
+            .next()
+            .ok_or(anyhow!("invalid author data"))?
+            .trim_matches(|c| c == '<' || c == '>');
+        let time = u64::from_str_radix(words.next().ok_or(anyhow!("invalid author data"))?, 10)?;
+        let time_zone = words.next().ok_or(anyhow!("invalid author data"))?;
+
+        Ok(Author {
+            name: String::from(name),
+            email: String::from(email),
+            time,
+            time_zone: String::from(time_zone),
+        })
+    }
 }
 
 pub fn new_commit(
-    tree: HashHex,
-    parents: Vec<HashHex>,
+    tree: Hash,
+    parents: Vec<Hash>,
     author: Author,
     committer: Option<Author>,
     signature: Option<String>,
@@ -38,7 +61,7 @@ pub fn new_commit(
 }
 
 pub fn decode_commit(mut data: Vec<u8>) -> Result<Commit> {
-    let tree = get_tree_hash_hex(&mut data)?;
+    let tree = get_tree_hash(&mut data)?;
     let parents = get_commit_parents(&mut data)?;
     let author = get_author(&mut data)?;
     let committer = get_committer(&mut data)?;
@@ -58,14 +81,11 @@ pub fn decode_commit(mut data: Vec<u8>) -> Result<Commit> {
 pub fn encode_commit(commit: Commit) -> Result<Vec<u8>> {
     let mut content = Vec::new();
 
-    content.append(&mut "tree ".as_bytes().to_vec());
-    content.append(&mut commit.tree.0.into_bytes());
-    content.append(&mut "\n".as_bytes().to_vec());
+    content.append(&mut format!("tree {:x}\n", commit.tree).into_bytes());
 
     for parent in commit.parents {
-        let parent_hash = parent.get_hash()?;
         content.append(&mut "parent ".as_bytes().to_vec());
-        content.append(&mut parent_hash.into());
+        content.append(&mut parent.into());
         content.append(&mut "\n".as_bytes().to_vec());
     }
 
@@ -98,7 +118,7 @@ pub fn encode_commit(commit: Commit) -> Result<Vec<u8>> {
     Ok(content)
 }
 
-fn get_tree_hash_hex(data: &mut Vec<u8>) -> Result<HashHex> {
+fn get_tree_hash(data: &mut Vec<u8>) -> Result<Hash> {
     /*
         tree SP hash_hex LF
     */
@@ -113,10 +133,10 @@ fn get_tree_hash_hex(data: &mut Vec<u8>) -> Result<HashHex> {
         return Err(anyhow!("invalid tree hash line"));
     }
 
-    Ok(HashHex(String::from_utf8(hash_hex)?))
+    Ok(Hash::try_from(hash_hex.as_ref())?)
 }
 
-fn get_commit_parents(data: &mut Vec<u8>) -> Result<Vec<HashHex>> {
+fn get_commit_parents(data: &mut Vec<u8>) -> Result<Vec<Hash>> {
     let mut parents = Vec::new();
     loop {
         match data.first_chunk::<7>() {
@@ -135,7 +155,7 @@ fn get_commit_parents(data: &mut Vec<u8>) -> Result<Vec<HashHex>> {
             return Err(anyhow!("invalid tree hash line"));
         }
 
-        parents.push(HashHex(String::from_utf8(hash_hex)?))
+        parents.push(Hash::try_from(hash_hex.as_ref())?)
     }
 
     Ok(parents)

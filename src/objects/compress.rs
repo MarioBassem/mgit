@@ -3,7 +3,7 @@ use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use std::io::{Read, Write};
 
 /// compress content
-pub fn compress(content: Vec<u8>) -> Result<Vec<u8>> {
+pub fn compress(content: &Vec<u8>) -> Result<Vec<u8>> {
     let mut writer = ZlibEncoder::new(Vec::new(), Compression::default());
     writer.write_all(&content)?;
     let compressed_data = writer.finish()?;

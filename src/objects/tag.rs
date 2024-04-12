@@ -1,10 +1,10 @@
 use std::io::BufRead;
 
-use super::{commit::Author, hash::HashHex, Object, ObjectKind};
+use super::{commit::Author, hash::Hash, Object, ObjectKind};
 use anyhow::{anyhow, Result};
 
 pub struct Tag {
-    object: HashHex,
+    object: Hash,
     object_type: ObjectKind,
     tag_name: String,
     tagger: Author,
@@ -13,7 +13,7 @@ pub struct Tag {
 }
 
 pub fn new_tag(
-    object: HashHex,
+    object: Hash,
     object_type: ObjectKind,
     tag_name: String,
     tagger: Author,
@@ -52,7 +52,7 @@ pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
 
         let (first_word, words) = line.split_once(' ').ok_or(anyhow!("invalid tag data"))?;
         match first_word {
-            "object" => tag.object = HashHex(String::from(words)),
+            "object" => tag.object = Hash::try_from(words.as_bytes())?,
             "type" => tag.object_type = ObjectKind::try_from(words)?,
             "tag" => tag.tag_name = String::from(words),
             "tagger" => tag.tagger = Author::try_from(words)?,
@@ -66,7 +66,7 @@ pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
 pub fn encode_tag(tag: Tag) -> Vec<u8> {
     let mut content = Vec::new();
 
-    content.append(&mut format!("object {}\n", tag.object.0).into_bytes());
+    content.append(&mut format!("object {:x}\n", tag.object).into_bytes());
 
     content.append(&mut format!("type {}\n", tag.object_type).into_bytes());
 
