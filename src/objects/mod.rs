@@ -154,3 +154,55 @@ impl Object {
         Ok(hash(&compressed_content))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::objects::{compress::compress, ObjectKind};
+
+    use super::Object;
+
+    #[test]
+    fn test_read_blob() {
+        let blob_data = String::from("hello world");
+
+        let data = format!("blob {}\0{}", blob_data.len(), blob_data);
+        let compressed_data = compress(&data.as_bytes().to_vec()).unwrap();
+
+        let object = Object::read(&*compressed_data).unwrap();
+        assert_eq!(object.kind.to_string(), ObjectKind::Blob.to_string());
+        assert!(object.data == "hello world".as_bytes());
+    }
+
+    #[test]
+    fn test_read_commit() {
+        let commit_data = String::from("commit data");
+        let data = format!("commit {}\0{}", commit_data.len(), commit_data);
+        let compressed_data = compress(&data.as_bytes().to_vec()).unwrap();
+
+        let object = Object::read(&*compressed_data).unwrap();
+        assert_eq!(object.kind.to_string(), ObjectKind::Commit.to_string());
+        assert!(object.data == "commit data".as_bytes());
+    }
+
+    #[test]
+    fn test_read_tree() {
+        let tree_data = String::from("tree data");
+        let data = format!("tree {}\0{}", tree_data.len(), tree_data);
+        let compressed_data = compress(&data.as_bytes().to_vec()).unwrap();
+
+        let object = Object::read(&*compressed_data).unwrap();
+        assert_eq!(object.kind.to_string(), ObjectKind::Tree.to_string());
+        assert!(object.data == "tree data".as_bytes());
+    }
+
+    #[test]
+    fn test_read_tag() {
+        let tag_data = String::from("tag data");
+        let data = format!("tag {}\0{}", tag_data.len(), tag_data);
+        let compressed_data = compress(&data.as_bytes().to_vec()).unwrap();
+
+        let object = Object::read(&*compressed_data).unwrap();
+        assert_eq!(object.kind.to_string(), ObjectKind::Tag.to_string());
+        assert!(object.data == "tag data".as_bytes());
+    }
+}
