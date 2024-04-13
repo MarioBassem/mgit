@@ -9,11 +9,14 @@ use std::{
     error::Error,
     ffi::OsString,
     fmt::Display,
-    fs::{self, create_dir_all},
+    fs::{self},
     path::PathBuf,
 };
 
-use self::hash::{hash, Hash};
+use self::{
+    compress::decompress,
+    hash::{hash, Hash},
+};
 
 use anyhow::{anyhow, Result};
 
@@ -83,11 +86,39 @@ impl Display for ObjectKind {
 
 impl Object {
     pub fn read_from_hash(hash_hex: String) -> Result<Object> {
-        todo!()
+        let hash = Hash::try_from(hash_hex.as_bytes())?;
+        let (dir, file_name) = hash.get_object_path();
+        let path = PathBuf::from(OBJECTS_DIR).join(dir).join(file_name);
+
+        Self::read_from_path(path)
     }
 
     pub fn read_from_path(path: PathBuf) -> Result<Object> {
-        todo!()
+        let file = fs::File::open(path)?;
+
+        // decompress content
+        let mut data = decompress(file)?;
+
+        let index = data
+            .iter()
+            .position(|c| *c == b'\0')
+            .ok_or(anyhow!("invalid object data. failed to find NUL"))?;
+
+        let mut header_bytes = data.split_off(index + 1);
+        let header_str = String::from_utf8(header_bytes)?;
+        header_str.trim_end_matches('\0');
+        let (kind_str, length_str) = header_str
+            .split_once(' ')
+            .ok_or(anyhow!("invalid object header"))?;
+
+        let kind = ObjectKind::try_from(kind_str)?;
+        let length = usize::from_str_radix(length_str, 10)?;
+
+        if length != data.len() {
+            return Err(anyhow!("object size does not match"));
+        }
+
+        Ok(Object { data, kind })
     }
 
     pub fn write(&self) -> Result<Hash> {
@@ -101,7 +132,6 @@ impl Object {
 
         let (dir_name, file_name) = hash.get_object_path();
 
-        create_dir_all(PathBuf::from(OBJECTS_DIR).join(dir_name))?;
         fs::write(
             PathBuf::from(OBJECTS_DIR).join(dir_name).join(file_name),
             compressed_content,
@@ -113,7 +143,10 @@ impl Object {
 
     /// encodes object content into a vector of bytes and adds the object header
     pub fn encode(&self) -> Vec<u8> {
-        todo!()
+        let mut data = Vec::new();
+        data.append(&mut format!("{} {}\0", self.kind, self.data.len()).into_bytes());
+        data.append(&mut self.data);
+        data
     }
 
     pub fn hash(&self) -> Result<Hash> {
@@ -124,17 +157,4 @@ impl Object {
 
         Ok(hash(&compressed_content))
     }
-    // /// gets 40 byte hash in hexadecimal format
-    // fn hash_hex(&self) -> Result<HashHex> {
-    //     Ok(HashHex::from(&self.hash()?))
-    // }
-
-    /// returns decompressed object data
-    fn data(&self) -> &Vec<u8> {
-        todo!()
-    }
-
-    // pub fn size(&self) -> usize {
-    //     self.data.len()
-    // }
 }
