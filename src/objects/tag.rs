@@ -37,7 +37,13 @@ pub fn new_tag(
 */
 
 pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
-    let mut tag: Tag;
+    let mut object: Option<Hash> = None;
+    let mut object_type: Option<ObjectKind> = None;
+    let mut tag_name: Option<String> = None;
+    let mut tagger: Option<Author> = None;
+    let mut additional_data: Option<String> = None;
+    let mut commit_message: Option<String> = None;
+
     let lines: Vec<String> = data.lines().collect::<Result<_, _>>()?;
     for (i, line) in lines.iter().enumerate() {
         if line.len() == 0 {
@@ -46,21 +52,28 @@ pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
                 return Err(anyhow!("invalid tag data"));
             }
 
-            tag.commit_message = Some(lines[i + 1]);
+            commit_message = Some(lines[i + 1].clone());
             break;
         }
 
         let (first_word, words) = line.split_once(' ').ok_or(anyhow!("invalid tag data"))?;
         match first_word {
-            "object" => tag.object = Hash::try_from(words.as_bytes())?,
-            "type" => tag.object_type = ObjectKind::try_from(words)?,
-            "tag" => tag.tag_name = String::from(words),
-            "tagger" => tag.tagger = Author::try_from(words)?,
-            _ => tag.additional_data = Some(line.to_string()),
+            "object" => object = Some(Hash::try_from(words.as_bytes())?),
+            "type" => object_type = Some(ObjectKind::try_from(words)?),
+            "tag" => tag_name = Some(String::from(words)),
+            "tagger" => tagger = Some(Author::try_from(words)?),
+            _ => additional_data = Some(line.to_string()),
         }
     }
 
-    Ok(tag)
+    Ok(Tag {
+        object: object.ok_or(anyhow!("tag missing object information"))?,
+        object_type: object_type.ok_or(anyhow!("tag missing object type information"))?,
+        tag_name: tag_name.ok_or(anyhow!("tag missing tag name information"))?,
+        tagger: tagger.ok_or(anyhow!("tag missing tagger information"))?,
+        commit_message,
+        additional_data,
+    })
 }
 
 pub fn encode_tag(tag: Tag) -> Vec<u8> {

@@ -52,9 +52,10 @@ impl Hash {
         format!("{:x}", self)
     }
 
-    pub fn get_object_path(&self) -> (&str, &str) {
+    pub fn get_object_path(&self) -> (String, String) {
         let hash_hex = format!("{:x}", self);
-        hash_hex.split_at(2)
+        let (l, r) = hash_hex.split_at(2);
+        (l.to_string(), r.to_string())
     }
 }
 

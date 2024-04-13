@@ -5,13 +5,7 @@ pub mod hash;
 pub mod tag;
 pub mod tree;
 
-use std::{
-    error::Error,
-    ffi::OsString,
-    fmt::Display,
-    fs::{self},
-    path::PathBuf,
-};
+use std::{error::Error, ffi::OsString, fmt::Display, fs, io::Read, path::PathBuf};
 
 use self::{
     compress::decompress,
@@ -89,24 +83,23 @@ impl Object {
         let hash = Hash::try_from(hash_hex.as_bytes())?;
         let (dir, file_name) = hash.get_object_path();
         let path = PathBuf::from(OBJECTS_DIR).join(dir).join(file_name);
-
-        Self::read_from_path(path)
+        let file = fs::File::open(path)?;
+        Self::read(file)
     }
 
-    pub fn read_from_path(path: PathBuf) -> Result<Object> {
-        let file = fs::File::open(path)?;
-
+    pub fn read<R: Read>(data: R) -> Result<Object> {
         // decompress content
-        let mut data = decompress(file)?;
+        let data = decompress(data)?;
 
         let index = data
             .iter()
             .position(|c| *c == b'\0')
             .ok_or(anyhow!("invalid object data. failed to find NUL"))?;
 
-        let mut header_bytes = data.split_off(index + 1);
-        let header_str = String::from_utf8(header_bytes)?;
-        header_str.trim_end_matches('\0');
+        let (header_bytes, data) = data.split_at(index + 1);
+
+        let header_str = String::from_utf8(header_bytes[0..index].to_vec())?;
+
         let (kind_str, length_str) = header_str
             .split_once(' ')
             .ok_or(anyhow!("invalid object header"))?;
@@ -118,11 +111,14 @@ impl Object {
             return Err(anyhow!("object size does not match"));
         }
 
-        Ok(Object { data, kind })
+        Ok(Object {
+            data: data.to_vec(),
+            kind,
+        })
     }
 
     pub fn write(&self) -> Result<Hash> {
-        let mut object_data = self.encode();
+        let object_data = self.encode();
 
         // compress content
         let compressed_content = compress::compress(&object_data)?;
@@ -145,12 +141,12 @@ impl Object {
     pub fn encode(&self) -> Vec<u8> {
         let mut data = Vec::new();
         data.append(&mut format!("{} {}\0", self.kind, self.data.len()).into_bytes());
-        data.append(&mut self.data);
+        data.append(&mut self.data.clone());
         data
     }
 
     pub fn hash(&self) -> Result<Hash> {
-        let mut blob_content = self.encode();
+        let blob_content = self.encode();
 
         // compress content
         let compressed_content = compress::compress(&blob_content)?;

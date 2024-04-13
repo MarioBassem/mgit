@@ -62,8 +62,13 @@ pub fn new_commit(
     todo!()
 }
 
-pub fn decode_commit(mut data: Vec<u8>) -> Result<Commit> {
-    let mut commit: Commit;
+pub fn decode_commit(data: Vec<u8>) -> Result<Commit> {
+    let mut tree: Option<Hash> = None;
+    let mut parents = Vec::new();
+    let mut author: Option<Author> = None;
+    let mut committer: Option<Author> = None;
+    let mut additional_data: Option<String> = None;
+    let mut message = String::new();
     let lines: Vec<String> = data.lines().collect::<Result<_, _>>()?;
     for (i, line) in lines.iter().enumerate() {
         if line.len() == 0 {
@@ -72,21 +77,28 @@ pub fn decode_commit(mut data: Vec<u8>) -> Result<Commit> {
                 return Err(anyhow!("invalid commit data"));
             }
 
-            commit.message = lines[i + 1];
+            message = lines[i + 1].clone();
             break;
         }
 
         let (first_word, words) = line.split_once(' ').ok_or(anyhow!("invalid tag data"))?;
         match first_word {
-            "tree" => commit.tree = Hash::try_from(words.as_bytes())?,
-            "parent" => commit.parents.push(Hash::try_from(words.as_bytes())?),
-            "author" => commit.author = Author::try_from(words)?,
-            "committer" => commit.committer = Author::try_from(words)?,
-            _ => commit.additional_data = Some(line.to_string()),
+            "tree" => tree = Some(Hash::try_from(words.as_bytes())?),
+            "parent" => parents.push(Hash::try_from(words.as_bytes())?),
+            "author" => author = Some(Author::try_from(words)?),
+            "committer" => committer = Some(Author::try_from(words)?),
+            _ => additional_data = Some(line.to_string()),
         }
     }
 
-    Ok(commit)
+    Ok(Commit {
+        tree: tree.ok_or(anyhow!("commit missing tree information"))?,
+        author: author.ok_or(anyhow!("commit missing author information"))?,
+        committer: committer.ok_or(anyhow!("commit missing committer information"))?,
+        parents,
+        message,
+        additional_data,
+    })
 }
 
 pub fn encode_commit(commit: Commit) -> Result<Vec<u8>> {

@@ -1,6 +1,11 @@
 use super::{hash::Hash, Object, ObjectError};
 use anyhow::{anyhow, bail, Ok, Result};
-use std::{fmt::Display, fs::DirEntry, os::unix::fs::PermissionsExt, str::FromStr};
+use std::{
+    fmt::Display,
+    fs::{self, DirEntry},
+    os::unix::fs::PermissionsExt,
+    str::FromStr,
+};
 
 pub struct Tree {
     entries: Vec<Entry>,
@@ -66,8 +71,8 @@ impl Entry {
         }
 
         let os_name = dir_entry.file_name();
-
-        let object = Object::read_from_path(dir_entry.path())?;
+        let file = fs::File::open(dir_entry.path())?;
+        let object = Object::read(file)?;
         let hash = object.hash()?;
 
         let name = os_name
