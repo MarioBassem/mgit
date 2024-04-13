@@ -11,10 +11,11 @@ pub fn compress(content: &Vec<u8>) -> Result<Vec<u8>> {
 }
 
 /// decompress content
-pub fn decompress<R: Read>(data: R) -> Result<String> {
+pub fn decompress<R: Read>(data: R) -> Result<Vec<u8>> {
     let mut decompressed = ZlibDecoder::new(data);
-    let mut ret = String::new();
-    decompressed.read_to_string(&mut ret)?;
+    let mut ret = Vec::new();
+
+    decompressed.read_to_end(&mut ret)?;
 
     Ok(ret)
 }
