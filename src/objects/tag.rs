@@ -3,6 +3,7 @@ use std::io::BufRead;
 use super::{commit::Author, hash::Hash, Object, ObjectKind};
 use anyhow::{anyhow, Result};
 
+#[derive(Debug)]
 pub struct Tag {
     object: Hash,
     object_type: ObjectKind,
@@ -103,4 +104,91 @@ pub fn encode_tag(tag: Tag) -> Vec<u8> {
     }
 
     content
+}
+
+#[cfg(test)]
+
+mod test {
+    use crate::objects::{commit::Author, hash::Hash, ObjectKind};
+
+    use super::{decode_tag, encode_tag, Tag};
+
+    #[test]
+    fn test_decode_tag() {
+        /*
+            format:
+                object object_hex_hash LF
+                type object_type LF
+                tag tag_name LF
+                tagger author LF
+                additional_data LF
+                LF
+                commit_message LF
+
+        */
+        let hash = (0..40).map(|_| 'a').collect::<String>();
+        let obj_type = String::from("commit");
+        let tag_name = String::from("v1.2");
+        let tagger = Author {
+            email: String::from("m@m.com"),
+            name: String::from("name"),
+            time: 1,
+            time_zone: String::from("+0200"),
+        };
+        let data = format!(
+            "object {}\ntype {}\ntag {}\ntagger {} <{}> {} {}\ngpgsig mysig\n\nmy message\n",
+            hash, obj_type, tag_name, tagger.name, tagger.email, tagger.time, tagger.time_zone
+        );
+
+        let tag = decode_tag(data.into_bytes()).unwrap();
+
+        assert_eq!(tag.additional_data, Some(String::from("gpgsig mysig")));
+        assert_eq!(tag.commit_message, Some(String::from("my message")));
+        assert_eq!(tag.object, Hash::try_from(hash.as_bytes()).unwrap());
+        assert_eq!(tag.object_type.to_string(), ObjectKind::Commit.to_string());
+
+        assert_eq!(tag.tagger.name, tagger.name);
+        assert_eq!(tag.tagger.email, tagger.email);
+        assert_eq!(tag.tagger.time, tagger.time);
+        assert_eq!(tag.tagger.time_zone, tagger.time_zone);
+
+        assert_eq!(tag.tag_name, tag_name);
+    }
+
+    #[test]
+    fn test_encode_tag() {
+        let hash_hex = (0..40).map(|_| 'a').collect::<String>();
+        let tag_name = String::from("abc");
+        let tagger = Author {
+            email: String::from("h@g.com"),
+            name: String::from("abc"),
+            time: 9,
+            time_zone: String::from("-0200"),
+        };
+        let tag = Tag {
+            additional_data: Some(String::from("add data")),
+            commit_message: Some(String::from("tag message")),
+            object: Hash::try_from(hash_hex.as_bytes()).unwrap(),
+            object_type: ObjectKind::Commit,
+            tag_name: tag_name.clone(),
+            tagger: tagger.clone(),
+        };
+
+        let data = encode_tag(tag);
+
+        assert_eq!(
+            data,
+            format!(
+                "object {}\ntype {}\ntag {}\ntagger {} <{}> {} {}\nadd data\n\ntag message\n",
+                hash_hex,
+                ObjectKind::Commit,
+                tag_name,
+                tagger.name,
+                tagger.email,
+                tagger.time,
+                tagger.time_zone,
+            )
+            .into_bytes()
+        );
+    }
 }
