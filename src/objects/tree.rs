@@ -7,6 +7,7 @@ use std::{
     str::FromStr,
 };
 
+#[derive(Debug)]
 pub struct Tree {
     entries: Vec<Entry>,
 }
@@ -22,9 +23,9 @@ pub fn decode_tree(mut data: Vec<u8>) -> Result<Tree> {
             .iter()
             .position(|c| *c == b'\0')
             .ok_or(anyhow!("invalid tree entry data"))?;
-        let mut tree_entry_info = String::from_utf8(data[..null_byte_index].to_vec())?;
+        let tree_entry_info = String::from_utf8(data[..null_byte_index].to_vec())?;
         data.drain(0..null_byte_index + 1);
-        let mut hash = data.split_off(20);
+        let hash = data.drain(0..20).collect::<Vec<u8>>();
 
         let (mode_str, name_str) = tree_entry_info
             .split_once(' ')
@@ -44,7 +45,8 @@ pub fn decode_tree(mut data: Vec<u8>) -> Result<Tree> {
 pub fn encode_tree(tree: Tree) -> Vec<u8> {
     let mut data = Vec::new();
     for entry in tree.entries {
-        data.append(&mut format!("{} {}\0{:x}", entry.mode, entry.name, entry.hash).into_bytes());
+        data.append(&mut format!("{} {}\0", entry.mode, entry.name).into_bytes());
+        data.append(&mut entry.hash.into())
     }
 
     data
@@ -105,7 +107,7 @@ enum EntryMode {
 impl Display for EntryMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntryMode::Directory => write!(f, "040000"),
+            EntryMode::Directory => write!(f, "40000"),
             EntryMode::ExecutableFile => write!(f, "100755"),
             EntryMode::RegularFile => write!(f, "100644"),
             EntryMode::SymbolicLink => write!(f, "120000"),
@@ -126,5 +128,92 @@ impl TryFrom<&str> for EntryMode {
         };
 
         Ok(entry_mode)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::objects::{
+        hash::Hash,
+        tree::{Entry, EntryMode},
+    };
+
+    use super::{decode_tree, encode_tree, Tree};
+
+    #[test]
+    fn test_decode_tree() {
+        /*
+            mode name\0hash(20-byte)
+        */
+        let hash1 = Hash::try_from((0..40).map(|_| 'a').collect::<String>().as_bytes()).unwrap();
+        let hash2 = Hash::try_from((0..40).map(|_| 'b').collect::<String>().as_bytes()).unwrap();
+        let hash3 = Hash::try_from((0..40).map(|_| 'c').collect::<String>().as_bytes()).unwrap();
+        let mut data = Vec::new();
+        data.append(&mut format!("40000 dir1\0").into_bytes());
+        data.append(&mut hash1.clone().into());
+        data.append(&mut format!("120000 symlink1\0").into_bytes());
+        data.append(&mut hash2.clone().into());
+        data.append(&mut format!("100644 regfile1\0").into_bytes());
+        data.append(&mut hash3.clone().into());
+
+        let tree = decode_tree(data).unwrap();
+        assert_eq!(
+            tree.entries,
+            vec![
+                Entry {
+                    hash: hash1,
+                    mode: EntryMode::Directory,
+                    name: String::from("dir1")
+                },
+                Entry {
+                    hash: hash2,
+                    mode: EntryMode::SymbolicLink,
+                    name: String::from("symlink1")
+                },
+                Entry {
+                    hash: hash3,
+                    mode: EntryMode::RegularFile,
+                    name: String::from("regfile1")
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_encode_tree() {
+        let hash1 = Hash::try_from((0..40).map(|_| 'a').collect::<String>().as_bytes()).unwrap();
+        let hash2 = Hash::try_from((0..40).map(|_| 'b').collect::<String>().as_bytes()).unwrap();
+        let hash3 = Hash::try_from((0..40).map(|_| 'c').collect::<String>().as_bytes()).unwrap();
+
+        let tree = Tree {
+            entries: vec![
+                Entry {
+                    hash: hash1.clone(),
+                    mode: EntryMode::Directory,
+                    name: String::from("dir1"),
+                },
+                Entry {
+                    hash: hash2.clone(),
+                    mode: EntryMode::SymbolicLink,
+                    name: String::from("symlink1"),
+                },
+                Entry {
+                    hash: hash3.clone(),
+                    mode: EntryMode::RegularFile,
+                    name: String::from("regfile1"),
+                },
+            ],
+        };
+
+        let mut want = Vec::new();
+        want.append(&mut format!("40000 dir1\0").into_bytes());
+        want.append(&mut hash1.clone().into());
+        want.append(&mut format!("120000 symlink1\0").into_bytes());
+        want.append(&mut hash2.clone().into());
+        want.append(&mut format!("100644 regfile1\0").into_bytes());
+        want.append(&mut hash3.clone().into());
+
+        let data = encode_tree(tree);
+        assert_eq!(data, want);
     }
 }
