@@ -3,6 +3,7 @@ use crate::objects::Hash;
 use anyhow::{anyhow, Result};
 use std::io::BufRead;
 
+#[derive(Debug)]
 pub struct Commit {
     tree: Hash,
     author: Author,
@@ -22,6 +23,7 @@ pub struct Commit {
     commit_message LF
 */
 
+#[derive(Debug, Clone)]
 pub struct Author {
     pub name: String,
     pub email: String,
@@ -107,9 +109,7 @@ pub fn encode_commit(commit: Commit) -> Result<Vec<u8>> {
     content.append(&mut format!("tree {:x}\n", commit.tree).into_bytes());
 
     for parent in commit.parents {
-        content.append(&mut "parent ".as_bytes().to_vec());
-        content.append(&mut parent.into());
-        content.append(&mut "\n".as_bytes().to_vec());
+        content.append(&mut format!("parent {:x}\n", parent).into_bytes());
     }
 
     content.append(
@@ -139,4 +139,79 @@ pub fn encode_commit(commit: Commit) -> Result<Vec<u8>> {
     content.append(&mut "\n".as_bytes().to_vec());
 
     Ok(content)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::objects::hash::Hash;
+
+    use super::{decode_commit, encode_commit, Author, Commit};
+
+    #[test]
+    fn test_decode_commit() {
+        let hash1 = (0..40).map(|_| 'a').collect::<String>();
+        let hash2 = (0..40).map(|_| 'b').collect::<String>();
+        let author = Author {
+            email: String::from("m@mail.com"),
+            name: String::from("name"),
+            time: 1,
+            time_zone: String::from("+0200"),
+        };
+
+        let data = format!("tree {}\nparent {}\nparent {}\nauthor {} <{}> {} {}\ncommitter {} <{}> {} {}\ngpgsig my_signature\n\ncommit message\n", hash1, hash1, hash2, author.name, author.email, author.time, author.time_zone, author.name, author.email, author.time, author.time_zone);
+        let commit = decode_commit(data.into_bytes()).unwrap();
+        assert_eq!(commit.tree, Hash::try_from(hash1.as_bytes()).unwrap());
+
+        assert_eq!(
+            commit.parents,
+            vec![
+                Hash::try_from(hash1.as_bytes()).unwrap(),
+                Hash::try_from(hash2.as_bytes()).unwrap()
+            ]
+        );
+
+        assert_eq!(commit.author.name, author.name);
+        assert_eq!(commit.author.email, author.email);
+        assert_eq!(commit.author.time, author.time);
+        assert_eq!(commit.author.time_zone, author.time_zone);
+
+        assert_eq!(commit.committer.name, author.name);
+        assert_eq!(commit.committer.email, author.email);
+        assert_eq!(commit.committer.time, author.time);
+        assert_eq!(commit.committer.time_zone, author.time_zone);
+
+        assert_eq!(
+            commit.additional_data,
+            Some(String::from("gpgsig my_signature"))
+        );
+
+        assert_eq!(commit.message, String::from("commit message"));
+    }
+
+    #[test]
+    fn test_encode_commit() {
+        let hash1 = (0..40).map(|_| 'a').collect::<String>();
+        let hash2 = (0..40).map(|_| 'b').collect::<String>();
+        let author = Author {
+            email: String::from("m@mail.com"),
+            name: String::from("name"),
+            time: 1,
+            time_zone: String::from("+0200"),
+        };
+
+        let commit = Commit {
+            additional_data: Some(String::from("gpgsig my_signature")),
+            author: author.clone(),
+            committer: author.clone(),
+            message: String::from("commit message"),
+            parents: vec![
+                Hash::try_from(hash1.as_bytes()).unwrap(),
+                Hash::try_from(hash2.as_bytes()).unwrap(),
+            ],
+            tree: Hash::try_from(hash1.as_bytes()).unwrap(),
+        };
+
+        let data = encode_commit(commit).unwrap();
+        assert_eq!(data, format!("tree {}\nparent {}\nparent {}\nauthor {} <{}> {} {}\ncommitter {} <{}> {} {}\ngpgsig my_signature\n\ncommit message\n", hash1, hash1, hash2, author.name, author.email, author.time, author.time_zone, author.name, author.email, author.time, author.time_zone).into_bytes());
+    }
 }
