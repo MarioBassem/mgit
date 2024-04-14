@@ -1,6 +1,7 @@
 use std::fmt::{Debug, LowerHex};
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, Ok};
+use hex;
 use sha1::{Digest, Sha1};
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -17,7 +18,7 @@ pub fn hash(data: &[u8]) -> Hash {
 
 impl LowerHex for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:02x?}", self.0)
+        write!(f, "{}", hex::encode(&self.0))
     }
 }
 
@@ -33,13 +34,8 @@ impl TryFrom<&[u8]> for Hash {
         let hash = match value.len() {
             20 => Hash(value.to_vec()),
             40 => {
-                let hash = String::from_utf8(value.to_vec())?;
-                let x: Result<Vec<u8>> = (0..hash.len())
-                    .step_by(2)
-                    .map(|i| -> Result<u8> { Ok(u8::from_str_radix(&hash[i..i + 2], 16)?) })
-                    .collect();
-
-                Hash(x?)
+                let hash = hex::decode(value)?;
+                Hash(hash)
             }
             _ => return Err(anyhow!("invalid hash length {}", value.len())),
         };
@@ -58,26 +54,3 @@ impl Hash {
         (l.to_string(), r.to_string())
     }
 }
-
-// pub struct HashHex(String);
-
-// impl From<&Hash> for HashHex {
-//     fn from(value: &Hash) -> Self {
-//         HashHex(format!("{:x}", value))
-//     }
-// }
-
-// impl HashHex {
-// pub fn get_object_path(&self) -> (&str, &str) {
-//     self.0.split_at(2)
-// }
-
-//     pub fn get_hash(&self) -> Result<Hash> {
-// let x: Result<Vec<u8>> = (0..self.0.len())
-//     .step_by(2)
-//     .map(|i| -> Result<u8> { Ok(u8::from_str_radix(&self.0[i..i + 2], 16)?) })
-//     .collect();
-
-// Ok(Hash(x?))
-//     }
-// }
