@@ -1,7 +1,8 @@
-mod clone;
-mod init;
-mod objects;
-mod pack_protocol;
+use anyhow::anyhow;
+use mgit::clone;
+use mgit::init;
+use mgit::objects;
+use mgit::pack_protocol;
 
 use std::{path::PathBuf, process::exit};
 
@@ -37,14 +38,14 @@ fn main() {
 
     let args = Cli::parse();
 
-    // let res = match args {
-    //     Cli::Init => init::init(),
-    //     Cli::CatFile { object: hash } => read_blob(hash),
-    //     Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
-    // };
+    let res = match args {
+        Cli::Init => init::init(),
+        _ => Err(anyhow!("some_err")), // Cli::CatFile { object: hash } => read_blob(hash),
+                                       // Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
+    };
 
-    // if let Err(err) = res {
-    //     error!("{}", err);
-    //     exit(1)
-    // }
+    if let Err(err) = res {
+        error!("{}", err);
+        exit(1)
+    }
 }

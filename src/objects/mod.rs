@@ -45,6 +45,7 @@ pub struct Object {
     kind: ObjectKind,
 }
 
+#[derive(Debug)]
 pub enum ObjectKind {
     Blob,
     Commit,

@@ -4,7 +4,7 @@ use anyhow::{anyhow, Ok};
 use hex;
 use sha1::{Digest, Sha1};
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
 pub(crate) struct Hash(Vec<u8>);
 
 /// hash data using sha1
