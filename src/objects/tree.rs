@@ -12,6 +12,17 @@ pub struct Tree {
     entries: Vec<Entry>,
 }
 
+impl Display for Tree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut entries = String::new();
+        for entry in &self.entries {
+            entries = format!("{}{}\n", entries, entry)
+        }
+
+        write!(f, "{}", entries)
+    }
+}
+
 pub fn new_tree(entries: Vec<Entry>) -> Tree {
     todo!()
 }
@@ -57,6 +68,12 @@ pub struct Entry {
     mode: EntryMode,
     name: String,
     hash: Hash,
+}
+
+impl Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {:x}", self.mode, self.name, self.hash)
+    }
 }
 
 impl Entry {

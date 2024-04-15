@@ -1,5 +1,7 @@
+use std::fmt::Display;
+
 pub struct Blob {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 pub fn decode_blob(data: Vec<u8>) -> Blob {

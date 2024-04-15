@@ -1,5 +1,7 @@
 use anyhow::anyhow;
+use mgit::cat_file;
 use mgit::clone;
+use mgit::hash_object::hash_object;
 use mgit::init;
 use mgit::objects;
 use mgit::pack_protocol;
@@ -40,8 +42,8 @@ fn main() {
 
     let res = match args {
         Cli::Init => init::init(),
-        _ => Err(anyhow!("some_err")), // Cli::CatFile { object: hash } => read_blob(hash),
-                                       // Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
+        Cli::CatFile { object: hash } => cat_file::cat_file(hash),
+        Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
     };
 
     if let Err(err) = res {

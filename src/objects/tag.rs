@@ -1,4 +1,4 @@
-use std::io::BufRead;
+use std::{fmt::Display, io::BufRead};
 
 use super::{commit::Author, hash::Hash, Object, ObjectKind};
 use anyhow::{anyhow, Result};
@@ -9,8 +9,18 @@ pub struct Tag {
     object_type: ObjectKind,
     tag_name: String,
     tagger: Author,
-    commit_message: Option<String>,
+    commit_message: String,
     additional_data: Option<String>,
+}
+
+impl Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "object {:x}\nobject_type {}\ntag {}\ntagger {}\n\n{}",
+            self.object, self.object_type, self.tag_name, self.tagger, self.commit_message
+        )
+    }
 }
 
 pub fn new_tag(
@@ -43,7 +53,7 @@ pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
     let mut tag_name: Option<String> = None;
     let mut tagger: Option<Author> = None;
     let mut additional_data: Option<String> = None;
-    let mut commit_message: Option<String> = None;
+    let mut commit_message: String = String::new();
 
     let lines: Vec<String> = data.lines().collect::<Result<_, _>>()?;
     for (i, line) in lines.iter().enumerate() {
@@ -53,7 +63,7 @@ pub fn decode_tag(data: Vec<u8>) -> Result<Tag> {
                 return Err(anyhow!("invalid tag data"));
             }
 
-            commit_message = Some(lines[i + 1].clone());
+            commit_message = lines[i + 1].clone();
             break;
         }
 
@@ -99,9 +109,7 @@ pub fn encode_tag(tag: Tag) -> Vec<u8> {
     }
 
     content.append(&mut "\n".as_bytes().to_vec());
-    if let Some(message) = tag.commit_message {
-        content.append(&mut format!("{}\n", message).into_bytes())
-    }
+    content.append(&mut format!("{}\n", tag.commit_message).into_bytes());
 
     content
 }
@@ -143,7 +151,7 @@ mod test {
         let tag = decode_tag(data.into_bytes()).unwrap();
 
         assert_eq!(tag.additional_data, Some(String::from("gpgsig mysig")));
-        assert_eq!(tag.commit_message, Some(String::from("my message")));
+        assert_eq!(tag.commit_message, String::from("my message"));
         assert_eq!(tag.object, Hash::try_from(hash.as_bytes()).unwrap());
         assert_eq!(tag.object_type.to_string(), ObjectKind::Commit.to_string());
 
@@ -167,7 +175,7 @@ mod test {
         };
         let tag = Tag {
             additional_data: Some(String::from("add data")),
-            commit_message: Some(String::from("tag message")),
+            commit_message: String::from("tag message"),
             object: Hash::try_from(hash_hex.as_bytes()).unwrap(),
             object_type: ObjectKind::Commit,
             tag_name: tag_name.clone(),

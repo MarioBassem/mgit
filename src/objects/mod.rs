@@ -41,8 +41,8 @@ impl Display for ObjectError {
 }
 
 pub struct Object {
-    data: Vec<u8>,
-    kind: ObjectKind,
+    pub data: Vec<u8>,
+    pub kind: ObjectKind,
 }
 
 #[derive(Debug)]

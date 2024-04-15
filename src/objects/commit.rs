@@ -1,7 +1,7 @@
 use super::Object;
 use crate::objects::Hash;
 use anyhow::{anyhow, Result};
-use std::io::BufRead;
+use std::{fmt::Display, io::BufRead};
 
 #[derive(Debug)]
 pub struct Commit {
@@ -11,6 +11,21 @@ pub struct Commit {
     parents: Vec<Hash>,
     message: String,
     additional_data: Option<String>,
+}
+
+impl Display for Commit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parents = String::new();
+        for parent in &self.parents {
+            parents = format!("{}parent {:x}\n", parents, parent);
+        }
+
+        write!(
+            f,
+            "tree {:x}\nauthor {}\ncommitter {}\n{}message {}",
+            self.tree, self.author, self.committer, parents, self.message
+        )
+    }
 }
 
 /*
@@ -29,6 +44,16 @@ pub struct Author {
     pub email: String,
     pub time: u64,
     pub time_zone: String,
+}
+
+impl Display for Author {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} <{}> {} {}",
+            self.name, self.email, self.time, self.time_zone
+        )
+    }
 }
 
 impl TryFrom<&str> for Author {
