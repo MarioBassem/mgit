@@ -72,7 +72,7 @@ pub struct Entry {
 
 impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {:x}", self.mode, self.name, self.hash)
+        write!(f, "{} {:x} {}", self.mode, self.hash, self.name)
     }
 }
 
@@ -124,10 +124,10 @@ enum EntryMode {
 impl Display for EntryMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntryMode::Directory => write!(f, "40000"),
-            EntryMode::ExecutableFile => write!(f, "100755"),
-            EntryMode::RegularFile => write!(f, "100644"),
-            EntryMode::SymbolicLink => write!(f, "120000"),
+            EntryMode::Directory => write!(f, "40000 dir"),
+            EntryMode::ExecutableFile => write!(f, "100755 executable-file"),
+            EntryMode::RegularFile => write!(f, "100644 blob"),
+            EntryMode::SymbolicLink => write!(f, "120000 symlink"),
         }
     }
 }
