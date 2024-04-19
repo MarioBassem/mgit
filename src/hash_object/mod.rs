@@ -23,7 +23,7 @@ pub fn hash_object(path: PathBuf, write: bool) -> Result<()> {
         hash = object.hash()?;
     }
 
-    info!("{:x}", hash);
+    println!("{:x}", hash);
 
     Ok(())
 }

@@ -11,19 +11,19 @@ pub fn cat_file(hash: String) -> Result<()> {
     match object.kind {
         ObjectKind::Blob => {
             let blob = decode_blob(object.data);
-            info!("{}", String::from_utf8(blob.data)?);
+            print!("{}", String::from_utf8(blob.data)?);
         }
         ObjectKind::Commit => {
             let commit = decode_commit(object.data)?;
-            info!("{}", commit)
+            print!("{}", commit)
         }
         ObjectKind::Tag => {
             let tag = decode_tag(object.data)?;
-            info!("{}", tag)
+            print!("{}", tag)
         }
         ObjectKind::Tree => {
             let tree = decode_tree(object.data)?;
-            info!("{}", tree)
+            print!("{}", tree)
         }
     }
 
