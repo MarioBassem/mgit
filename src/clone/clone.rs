@@ -103,6 +103,7 @@ fn fetch_refs(url: &str, refs: &[&str]) -> Result<()> {
 
     let mut body = Vec::new();
     for r in refs {
+        // TODO: check if we don't have ref
         writeln!(body, "0032want {}", r)?;
     }
 
@@ -128,10 +129,12 @@ fn fetch_refs(url: &str, refs: &[&str]) -> Result<()> {
 
     let mut pack_file = PackFile::new(bytes.clone())?;
     let pack_objects = pack_file.read_objects()?;
+    println!("pack objects: {:?}", pack_objects);
     for pack_obj in pack_objects {
         // let (hash, obj) = pack_obj.prepare()?;
     }
-    todo!()
+
+    Ok(())
 }
 
 fn checkout_commit(commit: Hash) -> Result<()> {

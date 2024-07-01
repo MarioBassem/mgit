@@ -4,8 +4,8 @@ use anyhow::{anyhow, Ok};
 use hex;
 use sha1::{Digest, Sha1};
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
-pub(crate) struct Hash(Vec<u8>);
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash)]
+pub(crate) struct Hash(pub Vec<u8>);
 
 /// hash data using sha1
 pub fn hash(data: &[u8]) -> Hash {

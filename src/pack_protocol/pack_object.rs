@@ -171,7 +171,6 @@ impl PackObject {
     }
 
     pub fn apply_delta_instructions(
-        pack_obj: &PackObject,
         base_obj: &Object,
         instructions: &Vec<DeltaInstruction>,
     ) -> Result<Object> {

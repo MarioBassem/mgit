@@ -4,11 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use bytes::{Buf, Bytes};
-use std::{
-    collections::HashMap,
-    error::Error,
-    fmt::{format, Display},
-};
+use std::{collections::HashMap, error::Error, fmt::Display};
 
 pub struct PackFile {
     data: Bytes,
@@ -156,11 +152,11 @@ impl PackFile {
         Ok(pack_objects)
     }
 
-    pub fn build_objects(&self, pack_objs: Vec<PackObject>) -> Result<Vec<Object>> {
+    pub fn build_objects(&self, mut pack_objs: Vec<PackObject>) -> Result<Vec<Object>> {
         let mut offset_index = HashMap::new();
         let mut hash_index = HashMap::new();
         let mut objs = Vec::new();
-        for (_, pack_obj) in pack_objs.iter().enumerate() {
+        for (_, pack_obj) in pack_objs.iter_mut().enumerate() {
             match pack_obj {
                 PackObject::OfsDelta {
                     offset,
@@ -177,16 +173,15 @@ impl PackFile {
                     )?;
 
                     let base_obj: &Object = objs.get(*base_index).unwrap(); // should always succeed
-                    assert_eq!(*base_size, base_obj.size());
+                    assert_eq!(*base_size, base_obj.data.len());
 
-                    let new_obj =
-                        PackObject::apply_delta_instructions(pack_obj, base_obj, instructions)?;
-                    assert_eq!(*reconstructed_size, new_obj.size());
+                    let new_obj = PackObject::apply_delta_instructions(base_obj, instructions)?;
+                    assert_eq!(*reconstructed_size, new_obj.data.len());
 
                     let hash = new_obj.hash()?;
                     objs.push(new_obj);
                     offset_index.insert(offset, objs.len() - 1);
-                    hash_index.insert(hash, objs.len() - 1);
+                    hash_index.insert(hash.to_hex(), objs.len() - 1);
                 }
                 PackObject::RefDelta {
                     offset,
@@ -195,32 +190,30 @@ impl PackFile {
                     base_size,
                     reconstructed_size,
                 } => {
-                    let base_index =
-                        hash_index
-                            .get(base_name)
-                            .ok_or(PackFileError::ErrRefDeltaBaseObject(format!(
-                                "base object not found: {:02x?}",
-                                base_name
-                            )))?;
+                    let base_index = hash_index.get(&Hash(base_name.clone()).to_hex()).ok_or(
+                        PackFileError::ErrRefDeltaBaseObject(format!(
+                            "base object not found: {:02x?}",
+                            base_name
+                        )),
+                    )?;
 
                     let base_obj = objs.get(*base_index).unwrap(); // should always succeed
-                    assert_eq!(*base_size, base_obj.size());
+                    assert_eq!(*base_size, base_obj.data.len());
 
-                    let new_obj =
-                        PackObject::apply_delta_instructions(pack_obj, base_obj, instructinos)?;
-                    assert_eq!(*reconstructed_size, new_obj.size());
+                    let new_obj = PackObject::apply_delta_instructions(base_obj, instructinos)?;
+                    assert_eq!(*reconstructed_size, new_obj.data.len());
 
                     let hash = new_obj.hash()?;
                     objs.push(new_obj);
                     offset_index.insert(offset, objs.len() - 1);
-                    hash_index.insert(hash, objs.len() - 1);
+                    hash_index.insert(hash.to_hex(), objs.len() - 1);
                 }
                 PackObject::Simple { data, offset } => {
-                    let object = Object::new(data.to_vec())?;
+                    let object = Object::read(data.reader())?;
                     let hash = object.hash()?;
                     objs.push(object);
                     offset_index.insert(offset, objs.len() - 1);
-                    hash_index.insert(hash, objs.len() - 1);
+                    hash_index.insert(hash.to_hex(), objs.len() - 1);
                 }
             }
         }
