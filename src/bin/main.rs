@@ -5,6 +5,7 @@ use mgit::hash_object::hash_object;
 use mgit::init;
 use mgit::objects;
 use mgit::pack_protocol;
+use mgit::fetch_pack::fetch_pack;
 
 use std::{path::PathBuf, process::exit};
 
@@ -28,6 +29,11 @@ enum Cli {
         write: bool,
         file_path: String,
     },
+
+    #[command()]
+    FetchPack{
+        url: String,
+    },
 }
 
 fn main() {
@@ -44,6 +50,7 @@ fn main() {
         Cli::Init => init::init(),
         Cli::CatFile { object: hash } => cat_file::cat_file(hash),
         Cli::HashObject { write, file_path } => hash_object(PathBuf::from(file_path), write),
+        Cli::FetchPack { url } => fetch_pack(&url)
     };
 
     if let Err(err) = res {
